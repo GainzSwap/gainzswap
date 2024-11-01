@@ -14,22 +14,29 @@ describe("Router", function () {
 
   describe("createPair", function () {
     const nativePayment: TokenPaymentStruct = { token: ZeroAddress, amount: parseEther("0.001"), nonce: 0 };
-    it("works", async () => {
-      const { createPair } = await loadFixture(routerFixture);
 
-      await createPair();
-    });
-
-    it("native-token", async () => {
+    it("works:native-ERC20", async () => {
       const { createPair } = await loadFixture(routerFixture);
 
       await createPair({ paymentA: nativePayment });
     });
 
-    it("native-token:reverse", async () => {
+    it("works:ERC20-native", async () => {
       const { createPair } = await loadFixture(routerFixture);
 
       await createPair({ paymentB: nativePayment });
+    });
+
+    it("works:ERC20-ERC20", async () => {
+      const { createPair, createToken } = await loadFixture(routerFixture);
+
+      const tokenA = await createToken(15);
+      const tokenB = await createToken(8);
+
+      await createPair({
+        paymentA: { token: tokenA, nonce: 0, amount: parseEther("1000") },
+        paymentB: { token: tokenB, nonce: 0, amount: parseEther("0.1") },
+      });
     });
 
     it("check gas", async () => {
@@ -40,7 +47,7 @@ describe("Router", function () {
 
       const tx = await router.createPair(nativePayment, tokenPayment, { value: nativePayment.amount });
       const receipt = await tx.wait();
-      expect(receipt!.gasUsed).to.eq(1137218); // Compared to the original version, this is cheaper
+      expect(receipt!.gasUsed).to.eq(1098638); // Compared to the original version, this is cheaper
     });
   });
 });

@@ -5,7 +5,7 @@ import "@openzeppelin/contracts/interfaces/IERC20.sol";
 import "@openzeppelin/contracts/utils/Address.sol";
 
 import { SFT } from "../abstracts/SFT.sol";
-import { WEDU } from "../tokens/WEDU.sol";
+import { WNTV } from "../tokens/WNTV.sol";
 
 struct TokenPayment {
 	address token;
@@ -16,36 +16,25 @@ struct TokenPayment {
 library TokenPayments {
 	using Address for address;
 
-	function receiveToken(TokenPayment memory payment) internal {
-		receiveToken(payment, msg.sender);
-	}
-
-	function receiveToken(TokenPayment memory payment, address from) internal {
-		if (msg.value > 0) {
-			// Native payment (ETH)
-			require(
-				payment.amount == msg.value,
-				"TokenPayments: ETH amount mismatch"
+	function receiveTokenFor(
+		TokenPayment memory payment,
+		address from,
+		address to,
+		bool isNative
+	) internal {
+		if (isNative) {
+			// Wrap native tokens for `to`
+			WNTV(payable(payment.token)).receiveFor{ value: payment.amount }(
+				to
 			);
-			require(
-				from == msg.sender,
-				"TokenPayments: Native payment must be from caller"
-			);
-
-			// Wrap EDU into WEDU
-			WEDU(payable(payment.token)).deposit{ value: msg.value }();
 		} else if (payment.nonce == 0) {
 			// ERC20 payment
-			IERC20(payment.token).transferFrom(
-				from,
-				address(this),
-				payment.amount
-			);
+			IERC20(payment.token).transferFrom(from, to, payment.amount);
 		} else {
 			// SFT payment
 			SFT(payment.token).safeTransferFrom(
 				from,
-				address(this),
+				to,
 				payment.nonce,
 				payment.amount,
 				""
@@ -57,7 +46,7 @@ library TokenPayments {
 		if (payment.nonce == 0) {
 			uint256 beforeNativeBal = address(this).balance;
 
-			// Try to withdraw ETH assuming payment.token is WEDU
+			// Try to withdraw ETH assuming payment.token is WNTV
 			(bool shouldMoveEthBalance, ) = payment.token.call(
 				abi.encodeWithSignature("withdraw(uint256)", payment.amount)
 			);
@@ -66,7 +55,7 @@ library TokenPayments {
 			if (shouldMoveEthBalance) {
 				require(
 					(beforeNativeBal + payment.amount) == address(this).balance,
-					"Failed to withdraw WEDU"
+					"Failed to withdraw WNTV"
 				);
 			}
 

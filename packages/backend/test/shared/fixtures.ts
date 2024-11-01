@@ -60,23 +60,21 @@ export async function routerFixture() {
     );
 
     let tokens: [string, string] = ["", ""];
-    for (let { token, index } of payments
-      .sort((a, b) => (a.token < b.token ? 1 : -1))
-      .map(({ token }, index) => {
-        // Consider native tokens
-        if (token == ZeroAddress) {
-          token = wrappedNativeToken;
-        }
+    for (let { token, index } of payments.map(({ token }, index) => {
+      // Consider native tokens
+      if (token == ZeroAddress) {
+        token = wrappedNativeToken;
+      }
 
-        return { token, index };
-      })) {
+      return { token, index };
+    })) {
       if (token instanceof BaseContract) {
         token = await token.getAddress();
       }
 
       tokens[index] = token.toString();
     }
-    const [tokenA, tokenB] = tokens;
+    const [tokenA, tokenB] = tokens.sort((a, b) => parseInt(a, 16) - parseInt(b, 16));
 
     const create2Address = getCreate2Address(await router.getAddress(), [tokenA, tokenB], PairBuild.bytecode);
 
