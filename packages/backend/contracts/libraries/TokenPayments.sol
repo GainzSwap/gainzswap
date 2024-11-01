@@ -7,6 +7,8 @@ import "@openzeppelin/contracts/utils/Address.sol";
 import { SFT } from "../abstracts/SFT.sol";
 import { WNTV } from "../tokens/WNTV.sol";
 
+import "hardhat/console.sol";
+
 struct TokenPayment {
 	address token;
 	uint256 amount;
@@ -20,9 +22,9 @@ library TokenPayments {
 		TokenPayment memory payment,
 		address from,
 		address to,
-		bool isNative
+		address wNTV
 	) internal {
-		if (isNative) {
+		if (payment.token == wNTV) {
 			// Wrap native tokens for `to`
 			WNTV(payable(payment.token)).receiveFor{ value: payment.amount }(
 				to
@@ -39,6 +41,19 @@ library TokenPayments {
 				payment.amount,
 				""
 			);
+		}
+	}
+
+	function sendDust(
+		TokenPayment memory payment,
+		uint256 dust,
+		address wNTV
+	) internal {
+		assert(payment.nonce == 0);
+
+		if (dust > 0) {
+			payment.amount = dust;
+			receiveTokenFor(payment, address(this), msg.sender, wNTV);
 		}
 	}
 

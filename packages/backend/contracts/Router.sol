@@ -14,10 +14,11 @@ import { AMMLibrary } from "./libraries/AMMLibrary.sol";
 
 import { WNTV } from "./tokens/WNTV.sol";
 
+import "hardhat/console.sol";
+
 contract Router is IRouter, SwapFactory, OldRouter {
 	using TokenPayments for TokenPayment;
 
-	error InvalidPaymentsWithNativeCoin();
 	error Expired();
 
 	/// @custom:storage-location erc7201:gainz.Router.storage
@@ -115,25 +116,11 @@ contract Router is IRouter, SwapFactory, OldRouter {
 		canCreatePair
 		returns (address pairAddress, TokenPayment memory gToken)
 	{
-		address tokenA = paymentA.token;
-		address tokenB = paymentB.token;
-		if (msg.value > 0) {
-			if (tokenA == address(0)) {
-				tokenA = getWrappedNativeToken();
-			} else if (tokenB == address(0)) {
-				tokenB = getWrappedNativeToken();
-			} else {
-				revert InvalidPaymentsWithNativeCoin();
-			}
-		}
-
-		pairAddress = _createPair(tokenA, tokenB);
+		pairAddress = _createPair(paymentA.token, paymentB.token);
 
 		(, , , gToken) = this.addLiquidity{ value: msg.value }(
 			paymentA,
 			paymentB,
-			0,
-			0,
 			0,
 			0,
 			msg.sender,
@@ -189,25 +176,47 @@ contract Router is IRouter, SwapFactory, OldRouter {
 	function _mintLiquidity(
 		TokenPayment memory paymentA,
 		TokenPayment memory paymentB,
-		int8 nativeFlag
+		address nativeTokenAddr,
+		address caller
 	) internal returns (uint liquidity) {
 		address pair = AMMLibrary.pairFor(
 			address(this),
 			paymentA.token,
 			paymentB.token
 		);
-		paymentA.receiveTokenFor(msg.sender, pair, nativeFlag > 0);
-		paymentB.receiveTokenFor(msg.sender, pair, nativeFlag < 0);
+
+		paymentA.receiveTokenFor(caller, pair, nativeTokenAddr);
+		paymentB.receiveTokenFor(caller, pair, nativeTokenAddr);
 
 		// Router holds all liquidity and mints GTokens for to address
 		liquidity = IPair(pair).mint(address(this));
 	}
 
+	function _sendLiquidtyDust(
+		TokenPayment memory paymentA,
+		TokenPayment memory paymentB,
+		uint amountA,
+		uint amountB,
+		address nativeTokenAddr
+	)
+		internal
+		returns (TokenPayment memory _paymentA, TokenPayment memory _paymentB)
+	{
+		uint256 dustA = paymentA.amount - amountA;
+		uint256 dustB = paymentB.amount - amountB;
+		paymentA.amount = amountA;
+		paymentB.amount = amountB;
+		// refund dusts, if any
+		paymentA.sendDust(dustA, nativeTokenAddr);
+		paymentB.sendDust(dustB, nativeTokenAddr);
+
+		_paymentA = paymentA;
+		_paymentB = paymentB;
+	}
+
 	function addLiquidity(
 		TokenPayment memory paymentA,
 		TokenPayment memory paymentB,
-		uint amountADesired,
-		uint amountBDesired,
 		uint amountAMin,
 		uint amountBMin,
 		address to,
@@ -224,45 +233,30 @@ contract Router is IRouter, SwapFactory, OldRouter {
 			TokenPayment memory gToken
 		)
 	{
-		int8 nativeFlag = 0;
-
-		if (msg.value > 0) {
-			if (paymentA.token == address(0)) {
-				paymentA.token = getWrappedNativeToken();
-				nativeFlag = 1;
-			} else if (paymentB.token == address(0)) {
-				paymentB.token = getWrappedNativeToken();
-				nativeFlag = -1;
-			} else {
-				revert InvalidPaymentsWithNativeCoin();
-			}
-		}
-
 		(amountA, amountB) = _addLiquidity(
 			paymentA.token,
 			paymentB.token,
-			amountADesired,
-			amountBDesired,
+			paymentA.amount,
+			paymentB.amount,
 			amountAMin,
 			amountBMin
 		);
-		paymentA.amount = amountA;
-		paymentB.amount = amountB;
+		address nativeTokenAddr = getWrappedNativeToken();
 
-		liquidity = _mintLiquidity(paymentA, paymentB, nativeFlag);
+		(paymentA, paymentB) = _sendLiquidtyDust(
+			paymentA,
+			paymentB,
+			amountA,
+			amountB,
+			nativeTokenAddr
+		);
 
-		// refund dust native coin, if any
-		if (nativeFlag != 0) {
-			uint256 amountNTV = nativeFlag > 0
-				? paymentA.amount
-				: paymentB.amount;
-			if (msg.value > amountNTV) {
-				address recipient = msg.sender == address(this)
-					? to
-					: msg.sender;
-				payable(recipient).transfer(msg.value - amountNTV);
-			}
-		}
+		liquidity = _mintLiquidity(
+			paymentA,
+			paymentB,
+			nativeTokenAddr,
+			msg.sender == address(this) ? to : msg.sender
+		);
 	}
 
 	function getWrappedNativeToken() public view returns (address) {

@@ -40,14 +40,18 @@ describe("Router", function () {
     });
 
     it("check gas", async () => {
-      const { router } = await loadFixture(routerFixture);
+      const { router, wrappedNativeToken, owner } = await loadFixture(routerFixture);
 
       const token = await ethers.deployContract("TestERC20", ["TokenB", "TKB", 18]);
       const tokenPayment: TokenPaymentStruct = { token: token, amount: parseEther("1000"), nonce: 0 };
+      await token.mint(owner, tokenPayment.amount);
+      await token.approve(router, tokenPayment.amount);
 
-      const tx = await router.createPair(nativePayment, tokenPayment, { value: nativePayment.amount });
+      const tx = await router.createPair({ ...nativePayment, token: wrappedNativeToken }, tokenPayment, {
+        value: nativePayment.amount,
+      });
       const receipt = await tx.wait();
-      expect(receipt!.gasUsed).to.eq(1098638); // Compared to the original version, this is cheaper
+      expect(receipt!.gasUsed).to.eq(1711017);
     });
   });
 });

@@ -32,7 +32,10 @@ library AMMLibrary {
 							hex"ff", // Constant prefix for CREATE2
 							router,
 							keccak256(abi.encodePacked(token0, token1)), // Salt
-							hex"23024a1a9a748d905c77089ad1b8099c87aedfdcb882cb70e6ecb6758d98405b" // init code hash
+							// TODO change to the more efficient one
+							keccak256(type(Pair).creationCode)
+
+							// hex"3b145c9850ea06c063b6b2949cf788c2a76d0854d925f1aa83e1e2a33830c059" // init code hash
 						)
 					)
 				)

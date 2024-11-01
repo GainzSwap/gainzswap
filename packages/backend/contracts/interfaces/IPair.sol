@@ -1,11 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 pragma solidity ^0.8.28;
 
-import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-
-interface IPair is IERC20 {
-	function DOMAIN_SEPARATOR() external view returns (bytes32);
-
+interface IPair {
 	event Mint(address indexed sender, uint256 amount0, uint256 amount1);
 	event Burn(
 		address indexed sender,
