@@ -3,7 +3,7 @@ pragma solidity ^0.8.28;
 
 import { ERC20Upgradeable } from "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
 
-import { IPair } from "./interface/IPair.sol";
+import { IPair } from "./interfaces/IPair.sol";
 
 contract Pair is IPair, ERC20Upgradeable {
 	uint public constant MINIMUM_LIQUIDITY = 10 ** 3;
@@ -14,12 +14,11 @@ contract Pair is IPair, ERC20Upgradeable {
 		address router;
 		address token0;
 		address token1;
-		uint112 reserve0; // uses single storage slot, accessible via getReserves
-		uint112 reserve1; // uses single storage slot, accessible via getReserves
-		uint32 blockTimestampLast; // uses single storage slot, accessible via getReserves
+		uint112 reserve0; 
+		uint112 reserve1; 
+		uint32 blockTimestampLast; 
 		uint price0CumulativeLast;
 		uint price1CumulativeLast;
-		uint kLast; // reserve0 * reserve1, as of immediately after the most recent liquidity event
 		bytes32 domainSeperator;
 	}
 	// keccak256(abi.encode(uint256(keccak256("gainz.Pair.storage")) - 1)) & ~bytes32(uint256(0xff));
@@ -57,8 +56,6 @@ contract Pair is IPair, ERC20Upgradeable {
 	function price0CumulativeLast() external view returns (uint256) {}
 
 	function price1CumulativeLast() external view returns (uint256) {}
-
-	function kLast() external view returns (uint256) {}
 
 	function mint(address to) external returns (uint256 liquidity) {}
 

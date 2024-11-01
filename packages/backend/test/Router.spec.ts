@@ -1,6 +1,9 @@
 import { loadFixture } from "@nomicfoundation/hardhat-network-helpers";
-import { routerFixture, TEST_ADDRESSES } from "./shared/fixtures";
+import { routerFixture } from "./shared/fixtures";
 import { expect } from "chai";
+import { parseEther, ZeroAddress } from "ethers";
+import { TokenPaymentStruct } from "../typechain-types/contracts/Router";
+import { ethers } from "hardhat";
 
 describe("Router", function () {
   it("allPairsLength", async () => {
@@ -10,24 +13,34 @@ describe("Router", function () {
   });
 
   describe("createPair", function () {
+    const nativePayment: TokenPaymentStruct = { token: ZeroAddress, amount: parseEther("0.001"), nonce: 0 };
     it("works", async () => {
       const { createPair } = await loadFixture(routerFixture);
 
-      await createPair(TEST_ADDRESSES);
+      await createPair();
     });
 
-    it("works in reverse", async () => {
+    it("native-token", async () => {
       const { createPair } = await loadFixture(routerFixture);
 
-      await createPair(TEST_ADDRESSES.slice().reverse() as [string, string]);
+      await createPair({ paymentA: nativePayment });
+    });
+
+    it("native-token:reverse", async () => {
+      const { createPair } = await loadFixture(routerFixture);
+
+      await createPair({ paymentB: nativePayment });
     });
 
     it("check gas", async () => {
       const { router } = await loadFixture(routerFixture);
 
-      const tx = await router.createPair(...TEST_ADDRESSES);
+      const token = await ethers.deployContract("TestERC20", ["TokenB", "TKB", 18]);
+      const tokenPayment: TokenPaymentStruct = { token: token, amount: parseEther("1000"), nonce: 0 };
+
+      const tx = await router.createPair(nativePayment, tokenPayment, { value: nativePayment.amount });
       const receipt = await tx.wait();
-      expect(receipt!.gasUsed).to.eq(1045108); // Compared to the original version, this is cheaper
+      expect(receipt!.gasUsed).to.eq(1137218); // Compared to the original version, this is cheaper
     });
   });
 });

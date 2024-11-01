@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 pragma solidity ^0.8.28;
 
-import { ISwapFactory } from "./interface/ISwapFactory.sol";
-import { IPair } from "./interface/IPair.sol";
+import { ISwapFactory } from "../interfaces/ISwapFactory.sol";
+import { IPair } from "../interfaces/IPair.sol";
 
-import { Pair } from "./Pair.sol";
+import { Pair } from "../Pair.sol";
 
 abstract contract SwapFactory is ISwapFactory {
 	struct SwapFactoryStorage {
@@ -44,15 +44,15 @@ abstract contract SwapFactory is ISwapFactory {
 		return _getSwapFactoryStorage().pairs.length;
 	}
 
-	function createPair(
+	function _createPair(
 		address tokenA,
 		address tokenB
-	) external returns (address pair) {
+	) internal returns (address pair) {
 		if (tokenA == tokenB) revert IdenticalAddress();
 		(address token0, address token1) = tokenA < tokenB
 			? (tokenA, tokenB)
 			: (tokenB, tokenA);
-		if (token0 == address(0)) revert ZeroAddress();
+		if (token0 == address(0)) revert ZeroAddress(); // This check is sufficient
 
 		SwapFactoryStorage storage $ = _getSwapFactoryStorage();
 

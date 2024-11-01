@@ -18,6 +18,7 @@
     "generate": "yarn workspace @gainz/backend generate",
     "hardhat-verify": "yarn workspace @gainz/backend hardhat-verify",
     "hardhat:format": "yarn workspace @gainz/backend format",
+    "hardhat:coverage": "yarn workspace @gainz/backend coverage",
     "hardhat:lint": "yarn workspace @gainz/backend lint",
     "hardhat:lint-staged": "yarn workspace @gainz/backend lint-staged",
     "hardhat:test": "yarn workspace @gainz/backend test",
