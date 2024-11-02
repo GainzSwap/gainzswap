@@ -11,13 +11,17 @@ import { IRouter } from "./interfaces/IRouter.sol";
 import { IPair } from "./interfaces/IPair.sol";
 
 import { TokenPayment, TokenPayments } from "./libraries/TokenPayments.sol";
+import { DeployGovernance } from "./libraries/DeployGovernance.sol";
+import { DeployWNTV } from "./libraries/DeployWNTV.sol";
 import { AMMLibrary } from "./libraries/AMMLibrary.sol";
+import { Epochs } from "./libraries/Epochs.sol";
 
 import { WNTV } from "./tokens/WNTV.sol";
 
+import { Governance } from "./Governance.sol";
 import { Pair } from "./Pair.sol";
 
-import "hardhat/console.sol";
+import "./types.sol";
 
 contract Router is IRouter, SwapFactory, OldRouter {
 	using TokenPayments for TokenPayment;
@@ -29,6 +33,8 @@ contract Router is IRouter, SwapFactory, OldRouter {
 		address wNativeToken;
 		address proxyAdmin;
 		address pairsBeacon;
+		address governance;
+		Epochs.Storage epochs;
 	}
 
 	// keccak256(abi.encode(uint256(keccak256("gainz.Router.storage")) - 1)) & ~bytes32(uint256(0xff));
@@ -50,6 +56,15 @@ contract Router is IRouter, SwapFactory, OldRouter {
 		_;
 	}
 
+	error CreatePairUnauthorized();
+	modifier canCreatePair() {
+		RouterStorage storage $ = _getRouterStorage();
+
+		if (msg.sender != owner() && msg.sender != $.governance)
+			revert CreatePairUnauthorized();
+		_;
+	}
+
 	function _receiveAndWrapNativeCoin()
 		private
 		returns (TokenPayment memory payment)
@@ -68,62 +83,56 @@ contract Router is IRouter, SwapFactory, OldRouter {
 	function initialize(address initialOwner) public initializer {
 		__Ownable_init(initialOwner);
 
-		RouterStorage storage $ = _getRouterStorage();
-
-		setProxyAdmin(msg.sender);
-
-		setWrappedNativeToken(
-			address(
-				new TransparentUpgradeableProxy(
-					address(new WNTV()),
-					$.proxyAdmin,
-					abi.encodeWithSignature("initialize()")
-				)
-			)
-		);
+		runInit();
 	}
 
 	error AddressSetAllready();
 
-	function setWrappedNativeToken(address wNativeToken) public onlyOwner {
+	function _setGovernance() internal {
 		RouterStorage storage $ = _getRouterStorage();
-		if ($.wNativeToken != address(0)) {
-			revert AddressSetAllready();
-		}
 
-		$.wNativeToken = wNativeToken;
-
-		if ($.wNativeToken == address(0)) {
-			$.wNativeToken = _getWEDU();
-		}
+		$.governance = DeployGovernance.create($.epochs, $.proxyAdmin);
 	}
 
-	function setProxyAdmin(address proxyAdmin) public onlyOwner {
+	/// @dev Initialisation for testnet after migration from old code
+	function runInit() public onlyOwner {
 		RouterStorage storage $ = _getRouterStorage();
 		if ($.proxyAdmin != address(0)) {
 			revert AddressSetAllready();
 		}
-		$.proxyAdmin = proxyAdmin;
+
+		$.proxyAdmin = _getProxyAdmin();
 
 		if ($.proxyAdmin == address(0)) {
-			$.proxyAdmin = _getProxyAdmin();
+			$.proxyAdmin = msg.sender;
 		}
 
 		// Deploy the UpgradeableBeacon contract
 		$.pairsBeacon = address(
 			new UpgradeableBeacon(address(new Pair()), $.proxyAdmin)
 		);
+
+		// set Wrapped Native Token;
+		$.wNativeToken = DeployWNTV.create($.proxyAdmin);
+
+		// Copy epochs from old storage
+		$.epochs = _getOldEpochsStorage();
+
+		_setGovernance();
 	}
+
+	// **** END INITIALIZATION ****
 
 	function createPair(
 		TokenPayment memory paymentA,
-		TokenPayment memory paymentB
+		TokenPayment memory paymentB,
+		address originalCaller
 	)
 		external
 		payable
 		override
 		canCreatePair
-		returns (address pairAddress, TokenPayment memory gToken)
+		returns (address pairAddress, uint256 liquidity)
 	{
 		pairAddress = _createPair(
 			paymentA.token,
@@ -131,12 +140,12 @@ contract Router is IRouter, SwapFactory, OldRouter {
 			_getRouterStorage().pairsBeacon
 		);
 
-		(, , , gToken) = this.addLiquidity{ value: msg.value }(
+		(, , liquidity) = addLiquidity(
 			paymentA,
 			paymentB,
 			0,
 			0,
-			msg.sender,
+			originalCaller,
 			block.timestamp + 1
 		);
 	}
@@ -192,37 +201,15 @@ contract Router is IRouter, SwapFactory, OldRouter {
 		TokenPayment memory paymentA,
 		TokenPayment memory paymentB,
 		address nativeTokenAddr,
-		address caller
+		address originalCaller
 	) internal returns (uint liquidity) {
 		address pair = getPair(paymentA.token, paymentB.token);
 
-		paymentA.receiveTokenFor(caller, pair, nativeTokenAddr);
-		paymentB.receiveTokenFor(caller, pair, nativeTokenAddr);
+		paymentA.receiveTokenFor(originalCaller, pair, nativeTokenAddr);
+		paymentB.receiveTokenFor(originalCaller, pair, nativeTokenAddr);
 
-		// Router holds all liquidity and mints GTokens for to address
-		liquidity = IPair(pair).mint(address(this));
-	}
-
-	function _sendLiquidtyDust(
-		TokenPayment memory paymentA,
-		TokenPayment memory paymentB,
-		uint amountA,
-		uint amountB,
-		address nativeTokenAddr
-	)
-		internal
-		returns (TokenPayment memory _paymentA, TokenPayment memory _paymentB)
-	{
-		uint256 dustA = paymentA.amount - amountA;
-		uint256 dustB = paymentB.amount - amountB;
-		paymentA.amount = amountA;
-		paymentB.amount = amountB;
-		// refund dusts, if any
-		paymentA.sendDust(dustA, nativeTokenAddr);
-		paymentB.sendDust(dustB, nativeTokenAddr);
-
-		_paymentA = paymentA;
-		_paymentB = paymentB;
+		// Governance holds all liquidity and mints GTokens for `originalCaller`
+		liquidity = IPair(pair).mint(_getRouterStorage().governance);
 	}
 
 	function addLiquidity(
@@ -230,19 +217,15 @@ contract Router is IRouter, SwapFactory, OldRouter {
 		TokenPayment memory paymentB,
 		uint amountAMin,
 		uint amountBMin,
-		address to,
+		address originalCaller,
 		uint deadline
 	)
-		external
+		public
 		payable
 		virtual
 		ensure(deadline)
-		returns (
-			uint amountA,
-			uint amountB,
-			uint liquidity,
-			TokenPayment memory gToken
-		)
+		canCreatePair
+		returns (uint amountA, uint amountB, uint liquidity)
 	{
 		(amountA, amountB) = _addLiquidity(
 			paymentA.token,
@@ -254,21 +237,15 @@ contract Router is IRouter, SwapFactory, OldRouter {
 		);
 		address nativeTokenAddr = getWrappedNativeToken();
 
-		(paymentA, paymentB) = _sendLiquidtyDust(
-			paymentA,
-			paymentB,
-			amountA,
-			amountB,
-			nativeTokenAddr
-		);
-
 		liquidity = _mintLiquidity(
 			paymentA,
 			paymentB,
 			nativeTokenAddr,
-			msg.sender == address(this) ? to : msg.sender
+			originalCaller
 		);
 	}
+
+	// ******* VIEWS *******
 
 	function getWrappedNativeToken() public view returns (address) {
 		return _getRouterStorage().wNativeToken;
@@ -276,5 +253,9 @@ contract Router is IRouter, SwapFactory, OldRouter {
 
 	function getPairsBeacon() public view returns (address) {
 		return _getRouterStorage().pairsBeacon;
+	}
+
+	function getGovernance() public view returns (address) {
+		return _getRouterStorage().governance;
 	}
 }

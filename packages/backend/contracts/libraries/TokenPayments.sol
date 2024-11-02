@@ -44,19 +44,6 @@ library TokenPayments {
 		}
 	}
 
-	function sendDust(
-		TokenPayment memory payment,
-		uint256 dust,
-		address wNTV
-	) internal {
-		assert(payment.nonce == 0);
-
-		if (dust > 0) {
-			payment.amount = dust;
-			receiveTokenFor(payment, address(this), msg.sender, wNTV);
-		}
-	}
-
 	function sendToken(TokenPayment memory payment, address to) internal {
 		if (payment.nonce == 0) {
 			uint256 beforeNativeBal = address(this).balance;
@@ -72,9 +59,7 @@ library TokenPayments {
 					(beforeNativeBal + payment.amount) == address(this).balance,
 					"Failed to withdraw WNTV"
 				);
-			}
 
-			if (shouldMoveEthBalance) {
 				payable(to).transfer(payment.amount);
 			} else {
 				IERC20(payment.token).transfer(to, payment.amount);

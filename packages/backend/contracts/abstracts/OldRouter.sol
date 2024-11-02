@@ -57,15 +57,6 @@ abstract contract OldRouter is OwnableUpgradeable {
 		}
 	}
 
-	error CreatePairUnauthorized();
-	modifier canCreatePair() {
-		OldRouterStorage storage $ = _getOldRouterStorage();
-
-		if (msg.sender != owner() && msg.sender != $.governance)
-			revert CreatePairUnauthorized();
-		_;
-	}
-
 	// ### INTERNAL VIEWS ###
 
 	function _getWEDU() internal view returns (address) {
@@ -74,5 +65,14 @@ abstract contract OldRouter is OwnableUpgradeable {
 
 	function _getProxyAdmin() internal view returns (address) {
 		return _getOldRouterStorage().proxyAdmin;
+	}
+
+	function _getOldEpochsStorage()
+		internal
+		view
+		returns (Epochs.Storage storage)
+	{
+		OldRouterStorage storage $ = _getOldRouterStorage();
+		return $.epochs;
 	}
 }

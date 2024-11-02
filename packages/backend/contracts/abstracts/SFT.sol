@@ -5,8 +5,10 @@ import { ERC1155Upgradeable } from "@openzeppelin/contracts-upgradeable/token/ER
 import { OwnableUpgradeable } from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
-abstract contract SFT is ERC1155Upgradeable, OwnableUpgradeable {
+abstract contract SFT is ERC1155Upgradeable {
 	using EnumerableSet for EnumerableSet.UintSet;
+
+	error ActionNotAllowed(address);
 
 	struct SftBalance {
 		uint256 nonce;
@@ -17,10 +19,11 @@ abstract contract SFT is ERC1155Upgradeable, OwnableUpgradeable {
 	/// @custom:storage-location erc7201:adex.sft.storage
 	struct SFTStorage {
 		uint256 nonceCounter;
-		string name;
-		string symbol;
 		mapping(uint256 => bytes) tokenAttributes; // Mapping from nonce to token attributes as bytes
 		mapping(address => EnumerableSet.UintSet) addressToNonces; // Mapping from address to list of owned token nonces
+		mapping(address => bool) updateOperators;
+		string name;
+		string symbol;
 	}
 
 	bytes32 private constant SFT_STORAGE_LOCATION =
@@ -38,13 +41,21 @@ abstract contract SFT is ERC1155Upgradeable, OwnableUpgradeable {
 	function __SFT_init(
 		string memory name_,
 		string memory symbol_,
-		address initialOwner
+		address firstOperator
 	) internal onlyInitializing {
 		__ERC1155_init(""); // Initialize ERC1155
-		__Ownable_init(initialOwner); // Initialize Ownable
 		SFTStorage storage $ = _getSFTStorage();
 		$.name = name_;
 		$.symbol = symbol_;
+		$.updateOperators[firstOperator] = true;
+	}
+
+	modifier canUpdate() {
+		if (!_getSFTStorage().updateOperators[msg.sender]) {
+			revert ActionNotAllowed(msg.sender);
+		}
+
+		_;
 	}
 
 	/// @dev Internal function to mint new tokens with attributes and store the nonce.
@@ -116,7 +127,7 @@ abstract contract SFT is ERC1155Upgradeable, OwnableUpgradeable {
 		uint256 nonce,
 		uint256 amount,
 		bytes memory attr
-	) public onlyOwner returns (uint256) {
+	) public canUpdate returns (uint256) {
 		_burn(user, nonce, amount);
 		return amount > 0 ? _mint(user, amount, attr) : 0;
 	}

@@ -11,8 +11,6 @@ import { UQ112x112 } from "./libraries/UQ112x112.sol";
 
 import { PairERC20 } from "./abstracts/PairERC20.sol";
 
-import "hardhat/console.sol";
-
 contract Pair is IPair, PairERC20, OwnableUpgradeable {
 	using UQ112x112 for uint224;
 
