@@ -17,42 +17,14 @@ library AMMLibrary {
 		require(token0 != address(0), "AMMLibrary: ZERO_ADDRESS");
 	}
 
-	// calculates the CREATE2 address for a pair without making any external calls
-	function pairFor(
-		address router,
-		address tokenA,
-		address tokenB
-	) internal pure returns (address pair) {
-		(address token0, address token1) = sortTokens(tokenA, tokenB);
-		pair = address(
-			uint160(
-				uint256(
-					keccak256(
-						abi.encodePacked(
-							hex"ff", // Constant prefix for CREATE2
-							router,
-							keccak256(abi.encodePacked(token0, token1)), // Salt
-							// TODO change to the more efficient one
-							keccak256(type(Pair).creationCode)
-
-							// hex"3b145c9850ea06c063b6b2949cf788c2a76d0854d925f1aa83e1e2a33830c059" // init code hash
-						)
-					)
-				)
-			)
-		);
-	}
-
 	// fetches and sorts the reserves for a pair
 	function getReserves(
-		address router,
+		address pair,
 		address tokenA,
 		address tokenB
 	) internal view returns (uint reserveA, uint reserveB) {
 		(address token0, ) = sortTokens(tokenA, tokenB);
-		(uint reserve0, uint reserve1, ) = IPair(
-			pairFor(router, tokenA, tokenB)
-		).getReserves();
+		(uint reserve0, uint reserve1, ) = IPair(pair).getReserves();
 		(reserveA, reserveB) = tokenA == token0
 			? (reserve0, reserve1)
 			: (reserve1, reserve0);

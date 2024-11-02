@@ -42,16 +42,27 @@ describe("Router", function () {
     it("check gas", async () => {
       const { router, wrappedNativeToken, owner } = await loadFixture(routerFixture);
 
-      const token = await ethers.deployContract("TestERC20", ["TokenB", "TKB", 18]);
-      const tokenPayment: TokenPaymentStruct = { token: token, amount: parseEther("1000"), nonce: 0 };
-      await token.mint(owner, tokenPayment.amount);
-      await token.approve(router, tokenPayment.amount);
+      const makePayment = async () => {
+        const token = await ethers.deployContract("TestERC20", ["TokenB", "TKB", 18]);
+        const tokenPayment: TokenPaymentStruct = { token: token, amount: parseEther("1000"), nonce: 0 };
+        await token.mint(owner, tokenPayment.amount);
+        await token.approve(router, tokenPayment.amount);
 
-      const tx = await router.createPair({ ...nativePayment, token: wrappedNativeToken }, tokenPayment, {
+        return tokenPayment;
+      };
+
+      const tx = await router.createPair({ ...nativePayment, token: wrappedNativeToken }, await makePayment(), {
         value: nativePayment.amount,
       });
       const receipt = await tx.wait();
-      expect(receipt!.gasUsed).to.eq(1711017);
+      expect(receipt!.gasUsed).to.eq(636373);
+
+      // Subsequently
+      const tx2 = await router.createPair({ ...nativePayment, token: wrappedNativeToken }, await makePayment(), {
+        value: nativePayment.amount,
+      });
+      const receipt2 = await tx2.wait();
+      expect(receipt2!.gasUsed).to.eq(602203);
     });
   });
 });

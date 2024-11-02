@@ -2,6 +2,7 @@
 pragma solidity ^0.8.28;
 
 import { TransparentUpgradeableProxy } from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
+import { UpgradeableBeacon } from "@openzeppelin/contracts/proxy/beacon/UpgradeableBeacon.sol";
 
 import { SwapFactory } from "./abstracts/SwapFactory.sol";
 import { OldRouter } from "./abstracts/OldRouter.sol";
@@ -14,6 +15,8 @@ import { AMMLibrary } from "./libraries/AMMLibrary.sol";
 
 import { WNTV } from "./tokens/WNTV.sol";
 
+import { Pair } from "./Pair.sol";
+
 import "hardhat/console.sol";
 
 contract Router is IRouter, SwapFactory, OldRouter {
@@ -25,6 +28,7 @@ contract Router is IRouter, SwapFactory, OldRouter {
 	struct RouterStorage {
 		address wNativeToken;
 		address proxyAdmin;
+		address pairsBeacon;
 	}
 
 	// keccak256(abi.encode(uint256(keccak256("gainz.Router.storage")) - 1)) & ~bytes32(uint256(0xff));
@@ -79,12 +83,12 @@ contract Router is IRouter, SwapFactory, OldRouter {
 		);
 	}
 
-	error AddressSetAlready();
+	error AddressSetAllready();
 
 	function setWrappedNativeToken(address wNativeToken) public onlyOwner {
 		RouterStorage storage $ = _getRouterStorage();
 		if ($.wNativeToken != address(0)) {
-			revert AddressSetAlready();
+			revert AddressSetAllready();
 		}
 
 		$.wNativeToken = wNativeToken;
@@ -97,13 +101,18 @@ contract Router is IRouter, SwapFactory, OldRouter {
 	function setProxyAdmin(address proxyAdmin) public onlyOwner {
 		RouterStorage storage $ = _getRouterStorage();
 		if ($.proxyAdmin != address(0)) {
-			revert AddressSetAlready();
+			revert AddressSetAllready();
 		}
 		$.proxyAdmin = proxyAdmin;
 
 		if ($.proxyAdmin == address(0)) {
 			$.proxyAdmin = _getProxyAdmin();
 		}
+
+		// Deploy the UpgradeableBeacon contract
+		$.pairsBeacon = address(
+			new UpgradeableBeacon(address(new Pair()), $.proxyAdmin)
+		);
 	}
 
 	function createPair(
@@ -116,7 +125,11 @@ contract Router is IRouter, SwapFactory, OldRouter {
 		canCreatePair
 		returns (address pairAddress, TokenPayment memory gToken)
 	{
-		pairAddress = _createPair(paymentA.token, paymentB.token);
+		pairAddress = _createPair(
+			paymentA.token,
+			paymentB.token,
+			_getRouterStorage().pairsBeacon
+		);
 
 		(, , , gToken) = this.addLiquidity{ value: msg.value }(
 			paymentA,
@@ -141,11 +154,13 @@ contract Router is IRouter, SwapFactory, OldRouter {
 		uint amountAMin,
 		uint amountBMin
 	) internal virtual returns (uint amountA, uint amountB) {
-		if (getPair(tokenA, tokenB) == address(0)) {
+		address pair = getPair(tokenA, tokenB);
+		if (pair == address(0)) {
 			revert PairNotListed();
 		}
+
 		(uint reserveA, uint reserveB) = AMMLibrary.getReserves(
-			address(this),
+			pair,
 			tokenA,
 			tokenB
 		);
@@ -179,11 +194,7 @@ contract Router is IRouter, SwapFactory, OldRouter {
 		address nativeTokenAddr,
 		address caller
 	) internal returns (uint liquidity) {
-		address pair = AMMLibrary.pairFor(
-			address(this),
-			paymentA.token,
-			paymentB.token
-		);
+		address pair = getPair(paymentA.token, paymentB.token);
 
 		paymentA.receiveTokenFor(caller, pair, nativeTokenAddr);
 		paymentB.receiveTokenFor(caller, pair, nativeTokenAddr);
@@ -261,5 +272,9 @@ contract Router is IRouter, SwapFactory, OldRouter {
 
 	function getWrappedNativeToken() public view returns (address) {
 		return _getRouterStorage().wNativeToken;
+	}
+
+	function getPairsBeacon() public view returns (address) {
+		return _getRouterStorage().pairsBeacon;
 	}
 }

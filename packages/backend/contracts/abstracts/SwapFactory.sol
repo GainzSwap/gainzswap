@@ -1,10 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 pragma solidity ^0.8.28;
 
+import { BeaconProxy } from "@openzeppelin/contracts/proxy/beacon/BeaconProxy.sol";
+
 import { ISwapFactory } from "../interfaces/ISwapFactory.sol";
 import { IPair } from "../interfaces/IPair.sol";
 
 import { Pair } from "../Pair.sol";
+
+import "hardhat/console.sol";
 
 abstract contract SwapFactory is ISwapFactory {
 	struct SwapFactoryStorage {
@@ -46,7 +50,8 @@ abstract contract SwapFactory is ISwapFactory {
 
 	function _createPair(
 		address tokenA,
-		address tokenB
+		address tokenB,
+		address pairsBeacon
 	) internal returns (address pair) {
 		if (tokenA == tokenB) revert IdenticalAddress();
 		(address token0, address token1) = tokenA < tokenB
@@ -57,12 +62,19 @@ abstract contract SwapFactory is ISwapFactory {
 		SwapFactoryStorage storage $ = _getSwapFactoryStorage();
 
 		if ($.pairMap[token0][token1] != address(0)) revert PairExists(); // single check is sufficient
-		bytes memory bytecode = type(Pair).creationCode;
+
+		// Generate the bytecode for the BeaconProxy with initialization data
+		bytes memory bytecode = abi.encodePacked(
+			type(BeaconProxy).creationCode,
+			abi.encode(
+				pairsBeacon,
+				abi.encodeWithSelector(Pair.initialize.selector, token0, token1) // pair init data
+			)
+		);
 		bytes32 salt = keccak256(abi.encodePacked(token0, token1));
 		assembly {
 			pair := create2(0, add(bytecode, 32), mload(bytecode), salt)
 		}
-		IPair(pair).initialize(token0, token1);
 
 		$.pairMap[token0][token1] = pair;
 		$.pairMap[token1][token0] = pair; // populate mapping in the reverse direction

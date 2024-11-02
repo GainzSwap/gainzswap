@@ -5,7 +5,7 @@ import PairBuild from "../../artifacts/contracts/Pair.sol/Pair.json";
 import { TokenPaymentStruct } from "../../typechain-types/contracts/Router";
 
 import { BaseContract, BigNumberish, getBigInt, parseEther, ZeroAddress } from "ethers";
-import { getCreate2Address } from "./utilities";
+import { getPairProxyAddress } from "./utilities";
 
 export async function routerFixture() {
   const [owner, ...users] = await ethers.getSigners();
@@ -16,6 +16,7 @@ export async function routerFixture() {
 
   const wrappedNativeToken = await router.getWrappedNativeToken();
   const routerAddress = await router.getAddress();
+  const pairsBeacon = await router.getPairsBeacon();
 
   let tokensCreated = 0;
   const createToken = async (decimals: BigNumberish) => {
@@ -73,23 +74,23 @@ export async function routerFixture() {
     }
     const [tokenA, tokenB] = tokens.sort((a, b) => parseInt(a, 16) - parseInt(b, 16));
 
-    const create2Address = getCreate2Address(routerAddress, [tokenA, tokenB], PairBuild.bytecode);
+    const pairProxy = await getPairProxyAddress(routerAddress, pairsBeacon, [tokenA, tokenB]);
 
     await expect(router.createPair(...payments, { value }))
       .to.emit(router, "PairCreated")
-      .withArgs(tokenA, tokenB, create2Address, 1);
+      .withArgs(tokenA, tokenB, pairProxy, 1);
 
     const paymentsReversed = payments.slice().reverse() as typeof payments;
     const tokensReversed = tokens.slice().reverse() as typeof tokens;
 
     await expect(router.createPair(...payments, { value })).to.be.revertedWithCustomError(router, "PairExists");
     await expect(router.createPair(...paymentsReversed, { value })).to.be.revertedWithCustomError(router, "PairExists");
-    expect(await router.getPair(...tokens)).to.eq(create2Address);
-    expect(await router.getPair(...tokensReversed)).to.eq(create2Address);
-    expect(await router.allPairs(0)).to.eq(create2Address);
+    expect(await router.getPair(...tokens)).to.eq(pairProxy);
+    expect(await router.getPair(...tokensReversed)).to.eq(pairProxy);
+    expect(await router.allPairs(0)).to.eq(pairProxy);
     expect(await router.allPairsLength()).to.eq(1);
 
-    const pair = await ethers.getContractAt("Pair", create2Address);
+    const pair = await ethers.getContractAt("Pair", pairProxy);
     expect(await pair.router()).to.eq(routerAddress);
     expect(await pair.token0()).to.eq(tokenA);
     expect(await pair.token1()).to.eq(tokenB);
