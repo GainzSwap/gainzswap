@@ -9,7 +9,7 @@ import { IPair } from "./interfaces/IPair.sol";
 import { Math } from "./libraries/Math.sol";
 import { UQ112x112 } from "./libraries/UQ112x112.sol";
 
-import { PairERC20 } from "./PairERC20.sol";
+import { PairERC20 } from "./abstracts/PairERC20.sol";
 
 import "hardhat/console.sol";
 
