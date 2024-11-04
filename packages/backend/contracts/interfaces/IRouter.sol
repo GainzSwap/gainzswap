@@ -6,8 +6,7 @@ import { TokenPayment } from "../libraries/TokenPayments.sol";
 interface IRouter {
 	function createPair(
 		TokenPayment calldata paymentA,
-		TokenPayment calldata paymentB,
-		address originalCaller
+		TokenPayment calldata paymentB
 	) external payable returns (address pairAddress, uint256 gTokenNonce);
 
 	function addLiquidity(
@@ -15,9 +14,11 @@ interface IRouter {
 		TokenPayment memory paymentB,
 		uint amountAMin,
 		uint amountBMin,
-		address originalCaller,
 		uint deadline
-	) external payable returns (uint amountA, uint amountB, uint liquidity);
+	)
+		external
+		payable
+		returns (uint amountA, uint amountB, uint liquidity, address pair);
 
 	function getWrappedNativeToken() external view returns (address);
 }

@@ -62,7 +62,7 @@ contract Pair is IPair, PairERC20, OwnableUpgradeable {
 	}
 
 	// update reserves and, on the first call per block, price accumulators
-	function _updatePair(
+	function _update(
 		uint balance0,
 		uint balance1,
 		uint112 reserve0,
@@ -113,6 +113,16 @@ contract Pair is IPair, PairERC20, OwnableUpgradeable {
 		_blockTimestampLast = $.blockTimestampLast;
 	}
 
+	function _safeTransfer(address token, address to, uint value) private {
+		(bool success, bytes memory data) = token.call(
+			abi.encodeWithSelector(SELECTOR, to, value)
+		);
+		require(
+			success && (data.length == 0 || abi.decode(data, (bool))),
+			"Pair: TRANSFER_FAILED"
+		);
+	}
+
 	function price0CumulativeLast() external view returns (uint256) {}
 
 	function price1CumulativeLast() external view returns (uint256) {}
@@ -140,7 +150,7 @@ contract Pair is IPair, PairERC20, OwnableUpgradeable {
 		require(liquidity > 0, "Pair: INSUFFICIENT_LIQUIDITY_MINTED");
 		_mint(to, liquidity);
 
-		_updatePair(balance0, balance1, reserve0, reserve1);
+		_update(balance0, balance1, reserve0, reserve1);
 		emit Mint(msg.sender, amount0, amount1);
 	}
 
@@ -149,11 +159,59 @@ contract Pair is IPair, PairERC20, OwnableUpgradeable {
 	) external returns (uint256 amount0, uint256 amount1) {}
 
 	function swap(
-		uint256 amount0Out,
-		uint256 amount1Out,
-		address to,
-		bytes calldata data
-	) external {}
+		uint amount0Out,
+		uint amount1Out,
+		address to
+	) external lock onlyOwner {
+		require(
+			amount0Out > 0 || amount1Out > 0,
+			"Pair: INSUFFICIENT_OUTPUT_AMOUNT"
+		);
+		(uint112 _reserve0, uint112 _reserve1, ) = getReserves(); // gas savings
+		require(
+			amount0Out < _reserve0 && amount1Out < _reserve1,
+			"Pair: INSUFFICIENT_LIQUIDITY"
+		);
+
+		uint balance0;
+		uint balance1;
+		{
+			PairStorage storage $ = _getPairStorage();
+
+			// scope for _token{0,1}, avoids stack too deep errors
+			address _token0 = $.token0;
+			address _token1 = $.token1;
+			require(to != _token0 && to != _token1, "Pair: INVALID_TO");
+			if (amount0Out > 0) _safeTransfer(_token0, to, amount0Out); // optimistically transfer tokens
+			if (amount1Out > 0) _safeTransfer(_token1, to, amount1Out); // optimistically transfer tokens
+
+			balance0 = IERC20(_token0).balanceOf(address(this));
+			balance1 = IERC20(_token1).balanceOf(address(this));
+		}
+		uint amount0In = balance0 > _reserve0 - amount0Out
+			? balance0 - (_reserve0 - amount0Out)
+			: 0;
+		uint amount1In = balance1 > _reserve1 - amount1Out
+			? balance1 - (_reserve1 - amount1Out)
+			: 0;
+		require(
+			amount0In > 0 || amount1In > 0,
+			"Pair: INSUFFICIENT_INPUT_AMOUNT"
+		);
+		{
+			// scope for reserve{0,1}Adjusted, avoids stack too deep errors
+			uint balance0Adjusted = (balance0 * 1000) - (amount0In * (3));
+			uint balance1Adjusted = (balance1 * 1000) - (amount1In * (3));
+			require(
+				(balance0Adjusted * balance1Adjusted) >=
+					uint(_reserve0) * (_reserve1) * (1000 ** 2),
+				"Pair: K"
+			);
+		}
+
+		_update(balance0, balance1, _reserve0, _reserve1);
+		emit Swap(msg.sender, amount0In, amount1In, amount0Out, amount1Out, to);
+	}
 
 	function skim(address to) external {}
 

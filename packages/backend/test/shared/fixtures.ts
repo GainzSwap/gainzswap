@@ -32,6 +32,8 @@ export async function routerFixture() {
 
   const governanceAddress = await router.getGovernance();
   const governance = await ethers.getContractAt("Governance", governanceAddress);
+  const gTokenAddress = await governance.getGToken();
+  const gToken = await ethers.getContractAt("GToken", gTokenAddress);
 
   let tokensCreated = 0;
   const createToken = async (decimals: BigNumberish) => {
@@ -91,15 +93,15 @@ export async function routerFixture() {
 
     const pairProxy = await getPairProxyAddress(routerAddress, pairsBeacon, [tokenA, tokenB]);
 
-    await expect(router.createPair(...payments, owner, { value }))
+    await expect(router.createPair(...payments, { value }))
       .to.emit(router, "PairCreated")
       .withArgs(tokenA, tokenB, pairProxy, 1);
 
     const paymentsReversed = payments.slice().reverse() as typeof payments;
     const tokensReversed = tokens.slice().reverse() as typeof tokens;
 
-    await expect(router.createPair(...payments, owner, { value })).to.be.revertedWithCustomError(router, "PairExists");
-    await expect(router.createPair(...paymentsReversed, owner, { value })).to.be.revertedWithCustomError(
+    await expect(router.createPair(...payments, { value })).to.be.revertedWithCustomError(router, "PairExists");
+    await expect(router.createPair(...paymentsReversed, { value })).to.be.revertedWithCustomError(
       router,
       "PairExists",
     );
@@ -112,12 +114,15 @@ export async function routerFixture() {
     expect(await pair.router()).to.eq(routerAddress);
     expect(await pair.token0()).to.eq(tokenA);
     expect(await pair.token1()).to.eq(tokenB);
-    expect(await pair.balanceOf(governanceAddress)).to.be.gt(0);
+    expect(await pair.balanceOf(owner)).to.be.gt(0);
+
+    return payments;
   }
 
   return {
     router,
     governance,
+    gToken,
     createPair,
     createToken,
     owner,

@@ -51,14 +51,14 @@ describe("Router", function () {
         return tokenPayment;
       };
 
-      const tx = await router.createPair({ ...nativePayment, token: wrappedNativeToken }, await makePayment(), owner, {
+      const tx = await router.createPair({ ...nativePayment, token: wrappedNativeToken }, await makePayment(), {
         value: nativePayment.amount,
       });
       const receipt = await tx.wait();
       expect(receipt!.gasUsed).to.eq(629004);
 
       // Subsequently
-      const tx2 = await router.createPair({ ...nativePayment, token: wrappedNativeToken }, await makePayment(), owner, {
+      const tx2 = await router.createPair({ ...nativePayment, token: wrappedNativeToken }, await makePayment(), {
         value: nativePayment.amount,
       });
       const receipt2 = await tx2.wait();

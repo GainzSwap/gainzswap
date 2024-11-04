@@ -40,8 +40,6 @@ library Epochs {
 		Storage storage self,
 		uint256 timestamp
 	) internal view returns (uint256) {
-		require(self.genesis > 0, "Invalid genesis timestamp");
-		require(timestamp > 0, "Invalid timestamp");
 		require(self.epochLength > 0, "Invalid Epoch length");
 
 		return (timestamp - self.genesis) / self.epochLength;

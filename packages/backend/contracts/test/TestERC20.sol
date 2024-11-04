@@ -20,6 +20,11 @@ contract TestERC20 is ERC20, Ownable, ERC20Burnable {
 		_mint(to, amt);
 	}
 
+	function mintApprove(address owner, address spender, uint256 amt) public {
+		_mint(owner, amt);
+		_approve(owner, spender, amt);
+	}
+
 	function decimals() public view override returns (uint8) {
 		return _decimals;
 	}

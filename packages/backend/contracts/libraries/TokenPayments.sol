@@ -24,11 +24,9 @@ library TokenPayments {
 		address to,
 		address wNTV
 	) internal {
-		if (payment.token == wNTV) {
+		if (payment.token == address(0)) {
 			// Wrap native tokens for `to`
-			WNTV(payable(payment.token)).receiveFor{ value: payment.amount }(
-				to
-			);
+			WNTV(payable(wNTV)).receiveFor{ value: payment.amount }(to);
 		} else if (payment.nonce == 0) {
 			// ERC20 payment
 			IERC20(payment.token).transferFrom(from, to, payment.amount);

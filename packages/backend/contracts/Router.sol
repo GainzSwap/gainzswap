@@ -14,19 +14,19 @@ import { TokenPayment, TokenPayments } from "./libraries/TokenPayments.sol";
 import { DeployGovernance } from "./libraries/DeployGovernance.sol";
 import { DeployWNTV } from "./libraries/DeployWNTV.sol";
 import { AMMLibrary } from "./libraries/AMMLibrary.sol";
+import { TransferHelper } from "./libraries/TransferHelper.sol";
 import { Epochs } from "./libraries/Epochs.sol";
 
 import { WNTV } from "./tokens/WNTV.sol";
 
 import { Governance } from "./Governance.sol";
-import { Pair } from "./Pair.sol";
+import { Pair, IERC20 } from "./Pair.sol";
 
 import "./types.sol";
 
 contract Router is IRouter, SwapFactory, OldRouter {
 	using TokenPayments for TokenPayment;
-
-	error Expired();
+	using Epochs for Epochs.Storage;
 
 	/// @custom:storage-location erc7201:gainz.Router.storage
 	struct RouterStorage {
@@ -49,11 +49,6 @@ contract Router is IRouter, SwapFactory, OldRouter {
 		assembly {
 			$.slot := ROUTER_STORAGE_LOCATION
 		}
-	}
-
-	modifier ensure(uint deadline) {
-		if (deadline < block.timestamp) revert Expired();
-		_;
 	}
 
 	error CreatePairUnauthorized();
@@ -117,6 +112,9 @@ contract Router is IRouter, SwapFactory, OldRouter {
 
 		// Copy epochs from old storage
 		$.epochs = _getOldEpochsStorage();
+		if ($.epochs.epochLength == 0) {
+			$.epochs.initialize(24 hours);
+		}
 
 		_setGovernance();
 	}
@@ -125,8 +123,7 @@ contract Router is IRouter, SwapFactory, OldRouter {
 
 	function createPair(
 		TokenPayment memory paymentA,
-		TokenPayment memory paymentB,
-		address originalCaller
+		TokenPayment memory paymentB
 	)
 		external
 		payable
@@ -140,17 +137,114 @@ contract Router is IRouter, SwapFactory, OldRouter {
 			_getRouterStorage().pairsBeacon
 		);
 
-		(, , liquidity) = addLiquidity(
+		(, , liquidity, ) = addLiquidity(
 			paymentA,
 			paymentB,
 			0,
 			0,
-			originalCaller,
 			block.timestamp + 1
 		);
 	}
 
+	// **** SWAP ****
+
+	error Expired();
+
+	modifier ensure(uint deadline) {
+		if (deadline < block.timestamp) revert Expired();
+		_;
+	}
+
+	// requires the initial amount to have already been sent to the first pair
+	function _swap(
+		uint[] memory amounts,
+		address[] memory path,
+		address _to
+	) internal virtual {
+		for (uint i; i < path.length - 1; i++) {
+			(address input, address output) = (path[i], path[i + 1]);
+			(address token0, ) = AMMLibrary.sortTokens(input, output);
+			uint amountOut = amounts[i + 1];
+			(uint amount0Out, uint amount1Out) = input == token0
+				? (uint(0), amountOut)
+				: (amountOut, uint(0));
+			address to = i < path.length - 2
+				? AMMLibrary.pairFor(
+					address(this),
+					getPairsBeacon(),
+					output,
+					path[i + 2]
+				)
+				: _to;
+			IPair(
+				AMMLibrary.pairFor(
+					address(this),
+					getPairsBeacon(),
+					input,
+					output
+				)
+			).swap(amount0Out, amount1Out, to);
+		}
+	}
+
+	function swapExactTokensForTokens(
+		uint amountIn,
+		uint amountOutMin,
+		address[] calldata path,
+		address to,
+		uint deadline
+	)
+		external
+		payable
+		virtual
+		ensure(deadline)
+		returns (uint[] memory amounts)
+	{
+		amounts = AMMLibrary.getAmountsOut(
+			address(this),
+			getPairsBeacon(),
+			amountIn,
+			path
+		);
+		require(
+			amounts[amounts.length - 1] >= amountOutMin,
+			"Router: INSUFFICIENT_OUTPUT_AMOUNT"
+		);
+
+		{
+			// Send token scope
+			address pair = AMMLibrary.pairFor(
+				address(this),
+				getPairsBeacon(),
+				path[0],
+				path[1]
+			);
+			if (msg.value > 0) {
+				require(
+					msg.value == amountIn,
+					"Router: INVALID_AMOUNT_IN_VALUES"
+				);
+				require(
+					path[0] == getWrappedNativeToken(),
+					"Router: INVALID_PATH"
+				);
+				WNTV(getWrappedNativeToken()).receiveFor{ value: msg.value }(
+					pair
+				);
+			} else {
+				TransferHelper.safeTransferFrom(
+					path[0],
+					msg.sender,
+					pair,
+					amounts[0]
+				);
+			}
+		}
+		_swap(amounts, path, to);
+	}
+
 	// **** ADD LIQUIDITY ****
+
 	error PairNotListed();
 	error InSufficientAAmount();
 	error InSufficientBAmount();
@@ -168,11 +262,7 @@ contract Router is IRouter, SwapFactory, OldRouter {
 			revert PairNotListed();
 		}
 
-		(uint reserveA, uint reserveB) = AMMLibrary.getReserves(
-			pair,
-			tokenA,
-			tokenB
-		);
+		(uint reserveA, uint reserveB, ) = IPair(pair).getReserves();
 		if (reserveA == 0 && reserveB == 0) {
 			(amountA, amountB) = (amountADesired, amountBDesired);
 		} else {
@@ -199,17 +289,24 @@ contract Router is IRouter, SwapFactory, OldRouter {
 
 	function _mintLiquidity(
 		TokenPayment memory paymentA,
-		TokenPayment memory paymentB,
-		address nativeTokenAddr,
-		address originalCaller
-	) internal returns (uint liquidity) {
-		address pair = getPair(paymentA.token, paymentB.token);
+		TokenPayment memory paymentB
+	) internal returns (uint liquidity, address pair) {
+		pair = getPair(paymentA.token, paymentB.token);
 
-		paymentA.receiveTokenFor(originalCaller, pair, nativeTokenAddr);
-		paymentB.receiveTokenFor(originalCaller, pair, nativeTokenAddr);
+		// Prepare payment{A,B} for reception
+		address wNativeToken = getWrappedNativeToken();
+		if (paymentA.token == wNativeToken && msg.value == paymentA.amount) {
+			paymentA.token = address(0);
+		} else if (
+			paymentB.token == wNativeToken && msg.value == paymentB.amount
+		) {
+			paymentB.token = address(0);
+		}
 
-		// Governance holds all liquidity and mints GTokens for `originalCaller`
-		liquidity = IPair(pair).mint(_getRouterStorage().governance);
+		paymentA.receiveTokenFor(msg.sender, pair, wNativeToken);
+		paymentB.receiveTokenFor(msg.sender, pair, wNativeToken);
+
+		liquidity = IPair(pair).mint(msg.sender);
 	}
 
 	function addLiquidity(
@@ -217,7 +314,6 @@ contract Router is IRouter, SwapFactory, OldRouter {
 		TokenPayment memory paymentB,
 		uint amountAMin,
 		uint amountBMin,
-		address originalCaller,
 		uint deadline
 	)
 		public
@@ -225,7 +321,7 @@ contract Router is IRouter, SwapFactory, OldRouter {
 		virtual
 		ensure(deadline)
 		canCreatePair
-		returns (uint amountA, uint amountB, uint liquidity)
+		returns (uint amountA, uint amountB, uint liquidity, address pair)
 	{
 		(amountA, amountB) = _addLiquidity(
 			paymentA.token,
@@ -235,14 +331,8 @@ contract Router is IRouter, SwapFactory, OldRouter {
 			amountAMin,
 			amountBMin
 		);
-		address nativeTokenAddr = getWrappedNativeToken();
 
-		liquidity = _mintLiquidity(
-			paymentA,
-			paymentB,
-			nativeTokenAddr,
-			originalCaller
-		);
+		(liquidity, pair) = _mintLiquidity(paymentA, paymentB);
 	}
 
 	// ******* VIEWS *******
