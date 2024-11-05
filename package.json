@@ -30,6 +30,7 @@
     "ponder:codegen": "yarn workspace @gainz/ponder codegen",
     "ponder:dev": "yarn workspace @gainz/ponder dev",
     "ponder:lint": "yarn workspace @gainz/ponder lint",
+    "hardhat": "yarn workspace @gainz/backend hardhat",
     "ponder:serve": "yarn workspace @gainz/ponder serve",
     "ponder:start": "yarn workspace @gainz/ponder start",
     "ponder:typecheck": "yarn workspace @gainz/ponder typecheck",

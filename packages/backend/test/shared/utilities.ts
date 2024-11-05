@@ -5,7 +5,7 @@ import BeaconProxyBuild from "../../artifacts/@openzeppelin/contracts/proxy/beac
 
 export async function getPairProxyBytecode(pairsBeacon: string, [token0, token1]: [string, string]) {
   // Get the Pair's ABI and encode the initialize function selector with args
-  const PairFactory = await ethers.getContractFactory("Pair");
+  const PairFactory = await ethers.getContractFactory("PairV2");
   const initData = PairFactory.interface.encodeFunctionData("initialize", [token0, token1]);
 
   // Encode the constructor arguments for BeaconProxy (pairsBeacon address and initData)

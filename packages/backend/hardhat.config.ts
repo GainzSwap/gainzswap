@@ -9,6 +9,9 @@ import "solidity-coverage";
 import "@nomicfoundation/hardhat-verify";
 import "hardhat-deploy";
 import "hardhat-deploy-ethers";
+import "@openzeppelin/hardhat-upgrades";
+
+import "./scripts/upgradeFromAcademyDEX";
 
 // If not set, it uses the hardhat account 0 private key.
 const deployerPrivateKey =

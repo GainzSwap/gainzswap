@@ -19,16 +19,16 @@ import { Epochs } from "./libraries/Epochs.sol";
 
 import { WNTV } from "./tokens/WNTV.sol";
 
-import { Governance } from "./Governance.sol";
-import { Pair, IERC20 } from "./Pair.sol";
+import { GovernanceV2 } from "./Governance.sol";
+import { PairV2, IERC20 } from "./Pair.sol";
 
 import "./types.sol";
 
-contract Router is IRouter, SwapFactory, OldRouter {
+contract RouterV2 is IRouter, SwapFactory, OldRouter {
 	using TokenPayments for TokenPayment;
 	using Epochs for Epochs.Storage;
 
-	/// @custom:storage-location erc7201:gainz.Router.storage
+	/// @custom:storage-location erc7201:gainz.RouterV2.storage
 	struct RouterStorage {
 		address wNativeToken;
 		address proxyAdmin;
@@ -37,9 +37,9 @@ contract Router is IRouter, SwapFactory, OldRouter {
 		Epochs.Storage epochs;
 	}
 
-	// keccak256(abi.encode(uint256(keccak256("gainz.Router.storage")) - 1)) & ~bytes32(uint256(0xff));
+	// keccak256(abi.encode(uint256(keccak256("gainz.RouterV2.storage")) - 1)) & ~bytes32(uint256(0xff));
 	bytes32 private constant ROUTER_STORAGE_LOCATION =
-		0xc2c5d756614fe8e1f9e71cd191e82f360807e79b0a9d11a8c961359a3f9d1d00;
+		0xae974aecfb7025a5d7fc4d7e9ba067575060084b22f04fa48d6bbae6c0d48d00;
 
 	function _getRouterStorage()
 		private
@@ -104,7 +104,7 @@ contract Router is IRouter, SwapFactory, OldRouter {
 
 		// Deploy the UpgradeableBeacon contract
 		$.pairsBeacon = address(
-			new UpgradeableBeacon(address(new Pair()), $.proxyAdmin)
+			new UpgradeableBeacon(address(new PairV2()), $.proxyAdmin)
 		);
 
 		// set Wrapped Native Token;

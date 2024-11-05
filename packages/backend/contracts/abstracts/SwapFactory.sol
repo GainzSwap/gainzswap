@@ -6,11 +6,12 @@ import { BeaconProxy } from "@openzeppelin/contracts/proxy/beacon/BeaconProxy.so
 import { ISwapFactory } from "../interfaces/ISwapFactory.sol";
 import { IPair } from "../interfaces/IPair.sol";
 
-import { Pair } from "../Pair.sol";
+import { PairV2 } from "../Pair.sol";
 
 import "hardhat/console.sol";
 
 abstract contract SwapFactory is ISwapFactory {
+	/// @custom:storage-location erc7201:gainz.SwapFactory.storage
 	struct SwapFactoryStorage {
 		mapping(address => mapping(address => address)) pairMap;
 		address[] pairs;
@@ -68,7 +69,7 @@ abstract contract SwapFactory is ISwapFactory {
 			type(BeaconProxy).creationCode,
 			abi.encode(
 				pairsBeacon,
-				abi.encodeWithSelector(Pair.initialize.selector, token0, token1) // pair init data
+				abi.encodeWithSelector(PairV2.initialize.selector, token0, token1) // pair init data
 			)
 		);
 		bytes32 salt = keccak256(abi.encodePacked(token0, token1));

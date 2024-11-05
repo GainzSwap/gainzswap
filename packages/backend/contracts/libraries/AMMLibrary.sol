@@ -4,7 +4,7 @@ pragma solidity 0.8.28;
 import { BeaconProxy } from "@openzeppelin/contracts/proxy/beacon/BeaconProxy.sol";
 
 import { IPair } from "../interfaces/IPair.sol";
-import { Pair } from "../Pair.sol";
+import { PairV2 } from "../Pair.sol";
 
 import "../types.sol";
 
@@ -142,7 +142,7 @@ library AMMLibrary {
 				abi.encode(
 					pairsBeacon,
 					abi.encodeWithSelector(
-						Pair.initialize.selector,
+						PairV2.initialize.selector,
 						token0,
 						token1
 					)

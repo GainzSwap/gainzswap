@@ -1,7 +1,7 @@
 import { createConfig } from "@ponder/core";
 import { http } from "viem";
-import deployedContracts from "../nextjs/contracts/deployedContracts";
-import scaffoldConfig from "../nextjs/scaffold.config";
+import deployedContracts from "../ui/contracts/deployedContracts";
+import scaffoldConfig from "../ui/scaffold.config";
 
 const targetNetwork = scaffoldConfig.targetNetworks[0];
 

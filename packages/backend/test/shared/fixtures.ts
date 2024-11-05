@@ -5,23 +5,13 @@ import { TokenPaymentStruct } from "../../typechain-types/contracts/Router";
 
 import { BaseContract, BigNumberish, getBigInt, parseEther, ZeroAddress } from "ethers";
 import { getPairProxyAddress } from "./utilities";
+import { getRouterLibraries } from "../../utilities";
 
 export async function routerFixture() {
   const [owner, ...users] = await ethers.getSigners();
 
-  const RouterFactory = await ethers.getContractFactory("Router", {
-    libraries: {
-      DeployWNTV: await (await ethers.deployContract("DeployWNTV")).getAddress(),
-      DeployGovernance: await (
-        await (
-          await ethers.getContractFactory("DeployGovernance", {
-            libraries: {
-              DeployGToken: await (await ethers.deployContract("DeployGToken")).getAddress(),
-            },
-          })
-        ).deploy()
-      ).getAddress(),
-    },
+  const RouterFactory = await ethers.getContractFactory("RouterV2", {
+    libraries: await getRouterLibraries(ethers),
   });
   const router = await RouterFactory.deploy();
   await router.initialize(owner);
@@ -31,9 +21,9 @@ export async function routerFixture() {
   const pairsBeacon = await router.getPairsBeacon();
 
   const governanceAddress = await router.getGovernance();
-  const governance = await ethers.getContractAt("Governance", governanceAddress);
+  const governance = await ethers.getContractAt("GovernanceV2", governanceAddress);
   const gTokenAddress = await governance.getGToken();
-  const gToken = await ethers.getContractAt("GToken", gTokenAddress);
+  const gToken = await ethers.getContractAt("GTokenV2", gTokenAddress);
 
   let tokensCreated = 0;
   const createToken = async (decimals: BigNumberish) => {
@@ -101,16 +91,13 @@ export async function routerFixture() {
     const tokensReversed = tokens.slice().reverse() as typeof tokens;
 
     await expect(router.createPair(...payments, { value })).to.be.revertedWithCustomError(router, "PairExists");
-    await expect(router.createPair(...paymentsReversed, { value })).to.be.revertedWithCustomError(
-      router,
-      "PairExists",
-    );
+    await expect(router.createPair(...paymentsReversed, { value })).to.be.revertedWithCustomError(router, "PairExists");
     expect(await router.getPair(...tokens)).to.eq(pairProxy);
     expect(await router.getPair(...tokensReversed)).to.eq(pairProxy);
     expect(await router.allPairs(0)).to.eq(pairProxy);
     expect(await router.allPairsLength()).to.eq(1);
 
-    const pair = await ethers.getContractAt("Pair", pairProxy);
+    const pair = await ethers.getContractAt("PairV2", pairProxy);
     expect(await pair.router()).to.eq(routerAddress);
     expect(await pair.token0()).to.eq(tokenA);
     expect(await pair.token1()).to.eq(tokenB);
