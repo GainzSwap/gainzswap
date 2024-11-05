@@ -11,13 +11,14 @@ import { UQ112x112 } from "./libraries/UQ112x112.sol";
 
 import { PairERC20 } from "./abstracts/PairERC20.sol";
 
-contract Pair is IPair, PairERC20, OwnableUpgradeable {
+contract PairV2 is IPair, PairERC20, OwnableUpgradeable {
 	using UQ112x112 for uint224;
 
 	uint public constant MINIMUM_LIQUIDITY = 10 ** 3;
 	bytes4 private constant SELECTOR =
 		bytes4(keccak256(bytes("transfer(address,uint256)")));
 
+	/// @custom:storage-location erc7201:gainz.PairV2.storage
 	struct PairStorage {
 		uint unlocked;
 		address router;
@@ -29,9 +30,9 @@ contract Pair is IPair, PairERC20, OwnableUpgradeable {
 		uint price0CumulativeLast;
 		uint price1CumulativeLast;
 	}
-	// keccak256(abi.encode(uint256(keccak256("gainz.Pair.storage")) - 1)) & ~bytes32(uint256(0xff));
+	// keccak256(abi.encode(uint256(keccak256("gainz.PairV2.storage")) - 1)) & ~bytes32(uint256(0xff));
 	bytes32 private constant PAIR_STORAGE_LOCATION =
-		0xba980d5783bffb5f835d3f0c867bf29893420ce13d96cd991268a83c1f1e4100;
+		0x052a7ca952fd79e6951e1e37bbd8a7a728c978d413c271dcc4d73117e8490200;
 
 	function _getPairStorage() private pure returns (PairStorage storage $) {
 		assembly {

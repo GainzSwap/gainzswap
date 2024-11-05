@@ -26,6 +26,7 @@ abstract contract SFT is ERC1155Upgradeable {
 		string symbol;
 	}
 
+	// keccak256(abi.encode(uint256(keccak256("adex.sft.storage")) - 1)) & ~bytes32(uint256(0xff));
 	bytes32 private constant SFT_STORAGE_LOCATION =
 		0x62c7181558777c0450efc6bc1cd8d37cd6f6f3ac939cea4e0ebf7ac80730d200;
 

@@ -10,6 +10,7 @@ abstract contract PairERC20 is Initializable, IERC20, IERC20Errors {
 	string public constant symbol = "GNZ-LP";
 	uint8 public constant decimals = 18;
 
+	/// @custom:storage-location erc7201:gainz.PairERC20.storage
 	struct PairERC20Storage {
 		uint totalSupply;
 		mapping(address => uint) balanceOf;

@@ -6,10 +6,10 @@ import { OwnableUpgradeable } from "@openzeppelin/contracts-upgradeable/access/O
 import { TransparentUpgradeableProxy } from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
 
 import { Epochs } from "./libraries/Epochs.sol";
-import { GToken, GTokenLib } from "./tokens/GToken/GToken.sol";
+import { GTokenV2, GTokenLib } from "./tokens/GToken/GToken.sol";
 import { TokenPayment, TokenPayments } from "./libraries/TokenPayments.sol";
 
-import { Router } from "./Router.sol";
+import { RouterV2 } from "./Router.sol";
 
 import "./types.sol";
 
@@ -22,10 +22,10 @@ library DeployGToken {
 		return
 			address(
 				new TransparentUpgradeableProxy(
-					address(new GToken()),
+					address(new GTokenV2()),
 					proxyAdmin,
 					abi.encodeWithSelector(
-						GToken.initialize.selector,
+						GTokenV2.initialize.selector,
 						epochs,
 						initialOwner
 					)
@@ -37,11 +37,11 @@ library DeployGToken {
 /// @title Governance Contract
 /// @notice This contract handles the governance process by allowing users to lock LP tokens and mint GTokens.
 /// @dev This contract interacts with the GTokens library and manages LP token payments.
-contract Governance is ERC1155HolderUpgradeable, OwnableUpgradeable {
+contract GovernanceV2 is ERC1155HolderUpgradeable, OwnableUpgradeable {
 	using Epochs for Epochs.Storage;
 	using TokenPayments for TokenPayment;
 
-	/// @custom:storage-location erc7201:gainz.Governance.storage
+	/// @custom:storage-location erc7201:gainz.GovernanceV2.storage
 	struct GovernanceStorage {
 		uint256 rewardPerShare;
 		uint256 rewardsReserve;
@@ -51,9 +51,9 @@ contract Governance is ERC1155HolderUpgradeable, OwnableUpgradeable {
 		address protocolFeesCollector;
 	}
 
-	// keccak256(abi.encode(uint256(keccak256("gainz.Governance.storage")) - 1)) & ~bytes32(uint256(0xff));
+	// keccak256(abi.encode(uint256(keccak256("gainz.GovernanceV2.storage")) - 1)) & ~bytes32(uint256(0xff));
 	bytes32 private constant GOVERNANCE_STORAGE_LOCATION =
-		0xc28810daea0501c36ac69c5a41a8621a140281f0a38cc30865bbaf3d9b1add00;
+		0x8a4dda5430cdcd8aca8f2a075bbbae5f31557dc6b6b93555c9c43f674de00c00;
 
 	function _getGovernanceStorage()
 		private
@@ -105,7 +105,7 @@ contract Governance is ERC1155HolderUpgradeable, OwnableUpgradeable {
 		payment.token = path[path.length - 1];
 		payment.amount = payment.token == stakingPayment.token
 			? amountIn
-			: Router(_getGovernanceStorage().router).swapExactTokensForTokens(
+			: RouterV2(_getGovernanceStorage().router).swapExactTokensForTokens(
 				amountIn,
 				amountOutMin,
 				path,
@@ -118,7 +118,7 @@ contract Governance is ERC1155HolderUpgradeable, OwnableUpgradeable {
 		TokenPayment memory payment,
 		address router
 	) internal {
-		address wNativeToken = Router(router).getWrappedNativeToken();
+		address wNativeToken = RouterV2(router).getWrappedNativeToken();
 		bool paymentIsNative = payment.token == wNativeToken;
 
 		if (paymentIsNative) payment.token = address(0);
@@ -176,13 +176,13 @@ contract Governance is ERC1155HolderUpgradeable, OwnableUpgradeable {
 			if (paymentA.token != payment.token) paymentA.approve($.router);
 			if (paymentB.token != payment.token) paymentB.approve($.router);
 
-			(, , liqInfo.liquidity, liqInfo.pair) = Router($.router)
+			(, , liqInfo.liquidity, liqInfo.pair) = RouterV2($.router)
 				.addLiquidity(paymentA, paymentB, 0, 0, block.timestamp + 1);
 		}
 		// TODO compute gTokenSupply
 
 		return
-			GToken($.gtoken).mintGToken(
+			GTokenV2($.gtoken).mintGToken(
 				msg.sender,
 				$.rewardPerShare,
 				epochsLocked,
