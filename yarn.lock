@@ -1059,9 +1059,22 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@gainz/nextjs@workspace:packages/nextjs":
+"@gainz/ponder@workspace:packages/ponder":
   version: 0.0.0-use.local
-  resolution: "@gainz/nextjs@workspace:packages/nextjs"
+  resolution: "@gainz/ponder@workspace:packages/ponder"
+  dependencies:
+    "@ponder/core": ^0.4.28
+    "@types/node": ^20.10.0
+    eslint: ^8.54.0
+    eslint-config-ponder: ^0.4.28
+    typescript: ^5.3.2
+    viem: ^1.19.9
+  languageName: unknown
+  linkType: soft
+
+"@gainz/ui@workspace:packages/ui":
+  version: 0.0.0-use.local
+  resolution: "@gainz/ui@workspace:packages/ui"
   dependencies:
     "@heroicons/react": ~2.1.5
     "@rainbow-me/rainbowkit": 2.1.6
@@ -1101,19 +1114,6 @@ __metadata:
     viem: 2.21.32
     wagmi: 2.12.23
     zustand: ~5.0.0
-  languageName: unknown
-  linkType: soft
-
-"@gainz/ponder@workspace:packages/ponder":
-  version: 0.0.0-use.local
-  resolution: "@gainz/ponder@workspace:packages/ponder"
-  dependencies:
-    "@ponder/core": ^0.4.28
-    "@types/node": ^20.10.0
-    eslint: ^8.54.0
-    eslint-config-ponder: ^0.4.28
-    typescript: ^5.3.2
-    viem: ^1.19.9
   languageName: unknown
   linkType: soft
 
