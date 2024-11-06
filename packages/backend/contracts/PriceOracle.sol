@@ -9,6 +9,8 @@ import { IPairV2 } from "./interfaces/IPairV2.sol";
 
 import { IRouterV2 } from "./interfaces/IRouterV2.sol";
 
+import "./types.sol";
+
 // fixed window oracle that recomputes the average price for the entire period once every period
 // note that the price average is only guaranteed to be over at least 1 period, but may be over a longer period
 contract PriceOracle {
@@ -47,17 +49,17 @@ contract PriceOracle {
 		require(reserve0 != 0 && reserve1 != 0, "PriceOracle: NO_RESERVES"); // ensure that there's liquidity in the pair
 	}
 
-	function getUpdatedAveragePrices(
-		address tokenA,
-		address tokenB
-	) external returns (uint256 _price0Average, uint256 _price1Average) {
-		address pair = AMMLibrary.pairFor(router, pairsBeacon, tokenA, tokenB);
-		
-		update(pair);
+	// function getUpdatedAveragePrices(
+	// 	address tokenA,
+	// 	address tokenB
+	// ) external returns (uint256 _price0Average, uint256 _price1Average) {
+	// 	address pair = AMMLibrary.pairFor(router, pairsBeacon, tokenA, tokenB);
 
-		_price0Average = price0Average[pair].mul(1).decode144();
-		_price1Average = price1Average[pair].mul(1).decode144();
-	}
+	// 	update(pair);
+
+	// 	_price0Average = price0Average[pair].mul(1).decode144();
+	// 	_price1Average = price1Average[pair].mul(1).decode144();
+	// }
 
 	function update(address pair) public {
 		(
@@ -93,16 +95,47 @@ contract PriceOracle {
 	}
 
 	// note this will always return 0 before update has been called successfully for the first time.
-	function consult(
+	function _consult(
 		address pair,
 		address token,
 		uint amountIn
-	) external view returns (uint amountOut) {
+	) internal view returns (uint amountOut) {
 		if (token == token0[pair]) {
 			amountOut = price0Average[pair].mul(amountIn).decode144();
 		} else {
 			require(token == token1[pair], "PriceOracle: INVALID_TOKEN");
 			amountOut = price1Average[pair].mul(amountIn).decode144();
 		}
+	}
+
+	function consult(
+		address tokenIn,
+		address tokenOut,
+		uint amountIn
+	) external view returns (uint) {
+		address pair = AMMLibrary.pairFor(
+			router,
+			pairsBeacon,
+			tokenIn,
+			tokenOut
+		);
+
+		return _consult(pair, tokenIn, amountIn);
+	}
+
+	function updateAndConsult(
+		address tokenIn,
+		address tokenOut,
+		uint amountIn
+	) external returns (uint) {
+		address pair = AMMLibrary.pairFor(
+			router,
+			pairsBeacon,
+			tokenIn,
+			tokenOut
+		);
+		update(pair);
+
+		return _consult(pair, tokenIn, amountIn);
 	}
 }

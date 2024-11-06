@@ -17,6 +17,8 @@ import { getPairProxyAddress } from "./utilities";
 
 import PriceOracleBuild from "../../artifacts/contracts/PriceOracle.sol/PriceOracle.json";
 import { getRouterLibraries } from "../../utilities";
+import { time } from "@nomicfoundation/hardhat-network-helpers";
+import { hours } from "@nomicfoundation/hardhat-network-helpers/dist/src/helpers/time/duration";
 
 export async function routerFixture() {
   const [owner, ...users] = await ethers.getSigners();
@@ -55,7 +57,11 @@ export async function routerFixture() {
     return await ethers.deployContract("TestERC20", ["Token" + tokensCreated, "TK-" + tokensCreated, decimals]);
   };
 
-  async function createPair(args: { paymentA?: TokenPaymentStruct; paymentB?: TokenPaymentStruct } = {}) {
+  async function createPair(
+    args: { paymentA?: TokenPaymentStruct; paymentB?: TokenPaymentStruct; pairsCreated?: number } = {  },
+  ) {
+    const pairsCreated = args.pairsCreated??1;
+
     if (!args.paymentA && !args.paymentB) {
       args.paymentA = { token: wrappedNativeToken, nonce: 0, amount: parseEther("1000") };
       args.paymentB = { token: await createToken(8), nonce: 0, amount: parseEther("10") };
@@ -98,8 +104,7 @@ export async function routerFixture() {
       // Allowance
       if (tokenAddr != wrappedNativeToken) {
         const testToken = await ethers.getContractAt("TestERC20", tokenAddr);
-        await testToken.mint(owner, amount);
-        await testToken.approve(routerAddress, amount);
+        await testToken.mintApprove(owner, routerAddress, amount);
       }
     }
     const [tokenA, tokenB] = tokens.sort((a, b) => parseInt(a, 16) - parseInt(b, 16));
@@ -108,7 +113,7 @@ export async function routerFixture() {
 
     await expect(router.createPair(...payments, { value }))
       .to.emit(router, "PairCreated")
-      .withArgs(tokenA, tokenB, pairProxy, 1);
+      .withArgs(tokenA, tokenB, pairProxy, pairsCreated);
 
     const paymentsReversed = payments.slice().reverse() as typeof payments;
     const tokensReversed = tokens.slice().reverse() as typeof tokens;
@@ -117,8 +122,8 @@ export async function routerFixture() {
     await expect(router.createPair(...paymentsReversed, { value })).to.be.revertedWithCustomError(router, "PairExists");
     expect(await router.getPair(...tokens)).to.eq(pairProxy);
     expect(await router.getPair(...tokensReversed)).to.eq(pairProxy);
-    expect(await router.allPairs(0)).to.eq(pairProxy);
-    expect(await router.allPairsLength()).to.eq(1);
+    expect(await router.allPairs(pairsCreated - 1)).to.eq(pairProxy);
+    expect(await router.allPairsLength()).to.eq(pairsCreated);
 
     const pair = await ethers.getContractAt("PairV2", pairProxy);
     expect(await pair.router()).to.eq(routerAddress);
@@ -127,10 +132,12 @@ export async function routerFixture() {
     expect(await pair.balanceOf(owner)).to.be.gt(0);
 
     await priceOracle.update(pair);
-    expect(await priceOracle.consult(pair, tokenA, payments[0].amount)).to.gt(0);
+    expect(await priceOracle.consult(payments[0].token, payments[1].token, payments[0].amount)).to.gt(0);
 
     return payments;
   }
+
+  await time.increase(hours(1));
 
   return {
     router,

@@ -1,8 +1,9 @@
-import { loadFixture } from "@nomicfoundation/hardhat-network-helpers";
+import { loadFixture, time } from "@nomicfoundation/hardhat-network-helpers";
 import { routerFixture } from "./shared/fixtures";
 import { expect } from "chai";
-import { Addressable, parseEther } from "ethers";
+import { Addressable, AddressLike, parseEther, ZeroAddress } from "ethers";
 import { ethers } from "hardhat";
+import { hours } from "@nomicfoundation/hardhat-network-helpers/dist/src/helpers/time/duration";
 
 describe("Governance", function () {
   it("deploys governance", async () => {
@@ -63,6 +64,82 @@ describe("Governance", function () {
       expect(erc20StakingAttr.epochsLocked).to.equal(epochsLocked);
       expect(erc20StakingAttr.lpDetails.liquidity).to.gt(0);
       expect(erc20StakingAttr.lpDetails.liqValue).to.gt(0);
+    });
+
+    it("Should calculate liquidity value for tokenA with a 5-hop path to the native token", async () => {
+      // Deploy tokens and initialize contracts
+      const {
+        governance,
+        gToken,
+        users: [user],
+        wrappedNativeToken,
+        createToken,
+        createPair,
+      } = await loadFixture(routerFixture);
+
+      // Deploy tokenA, tokenB, and intermediary tokens
+      const tokenA = await createToken(5);
+      const tokenB = await createToken(9);
+      const intermediate1 = await createToken(2);
+      const intermediate2 = await createToken(3);
+      const intermediate3 = await createToken(4);
+      const intermediate4 = await createToken(5);
+
+      // Create path to native token with 5 hops
+      const pathToNative = [tokenA, intermediate1, intermediate2, intermediate3, intermediate4, wrappedNativeToken];
+
+      // Create pairs to link to the path
+      let pairsCreated = 0;
+      for (const [[token1, amount1], [token2, amount2]] of [
+        [
+          [tokenA, parseEther("0.05")],
+          [tokenB, parseEther("10")],
+        ],
+        [
+          [tokenA, parseEther("0.05")],
+          [intermediate1, parseEther("20")],
+        ],
+        [
+          [intermediate1, parseEther("20")],
+          [intermediate2, parseEther("30")],
+        ],
+        [
+          [intermediate2, parseEther("30")],
+          [intermediate3, parseEther("40")],
+        ],
+        [
+          [intermediate3, parseEther("40")],
+          [intermediate4, parseEther("50")],
+        ],
+        [
+          [intermediate4, parseEther("50")],
+          [ZeroAddress, parseEther("0.0009")],
+        ],
+      ] as [[AddressLike, bigint], [AddressLike, bigint]][]) {
+        await createPair({
+          paymentA: { token: token1, nonce: 0, amount: amount1 },
+          paymentB: { token: token2, nonce: 0, amount: amount2 },
+          pairsCreated: ++pairsCreated,
+        });
+      }
+
+      // Approve and stake with the given path
+      const payment = { token: wrappedNativeToken, amount: parseEther("0.0001"), nonce: 0 };
+
+      const nativeToTokenAPath = pathToNative.slice().reverse();
+      await governance.connect(user).stake(
+        payment,
+        1080, // Epochs locked
+        [nativeToTokenAPath, [...nativeToTokenAPath, tokenB], pathToNative], // Paths for A, B, and to native
+        0, // amountOutMinA
+        0, // amountOutMinB
+        { value: payment.amount },
+      );
+
+      // Fetch and assert native liquidity value
+      const { attributes: gTokenAttributes } = await gToken.getBalanceAt(user, 1);
+      expect(gTokenAttributes.lpDetails.liqValue).to.be.gt(0); // Liquidity value should be greater than zero
+      expect(gTokenAttributes.epochsLocked).to.equal(1080); // Correct epochs locked
     });
   });
 

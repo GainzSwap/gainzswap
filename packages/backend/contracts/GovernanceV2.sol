@@ -153,7 +153,7 @@ contract GovernanceV2 is ERC1155HolderUpgradeable, OwnableUpgradeable {
 		TokenPayment memory paymentA,
 		TokenPayment memory paymentB,
 		address[] calldata pathToNative
-	) internal returns (uint256 value) {
+	) internal view returns (uint256 value) {
 		// Early return if either payment{A,B} is native
 		if (paymentA.token == $.wNativeToken) return paymentA.amount;
 		if (paymentB.token == $.wNativeToken) return paymentB.amount;
@@ -176,24 +176,14 @@ contract GovernanceV2 is ERC1155HolderUpgradeable, OwnableUpgradeable {
 		// Start with payment amount
 		value = payment.amount;
 		for (uint256 i; i < pathToNative.length - 1; i++) {
-			bool use0 = pathToNative[i] < pathToNative[i + 1];
-			(uint256 price0Average, uint256 price1Average) = priceOracle
-				.getUpdatedAveragePrices(pathToNative[i], pathToNative[i + 1]);
-
-			// Ensure decimal consistency
-			uint8 decimalsIn = IERC20Metadata(pathToNative[i]).decimals();
-			uint8 decimalsOut = IERC20Metadata(pathToNative[i + 1]).decimals();
-			uint256 price = use0 ? price0Average : price1Average;
-
-			// Adjust for decimals between tokens
-			if (decimalsIn > decimalsOut) {
-				value = (value * price) / (10 ** (decimalsIn - decimalsOut));
-			} else if (decimalsOut > decimalsIn) {
-				value = (value * price * (10 ** (decimalsOut - decimalsIn)));
-			} else {
-				value *= price;
-			}
+			value = priceOracle.consult(
+				pathToNative[i],
+				pathToNative[i + 1],
+				value
+			);
 		}
+
+		require(value > 0, "Governance: INVALID_COMPUTED_LIQ_VALUE");
 	}
 
 	function stake(

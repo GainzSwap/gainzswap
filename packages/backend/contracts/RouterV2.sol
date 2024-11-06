@@ -269,7 +269,7 @@ contract RouterV2 is IRouterV2, SwapFactory, OldRouter {
 
 	// **** ADD LIQUIDITY ****
 
-	error PairNotListed();
+	error PairNotListed(address tokenA, address tokenB);
 	error InSufficientAAmount();
 	error InSufficientBAmount();
 
@@ -283,7 +283,7 @@ contract RouterV2 is IRouterV2, SwapFactory, OldRouter {
 	) internal virtual returns (uint amountA, uint amountB) {
 		address pair = getPair(tokenA, tokenB);
 		if (pair == address(0)) {
-			revert PairNotListed();
+			revert PairNotListed(tokenA, tokenB);
 		}
 
 		(uint reserveA, uint reserveB, ) = IPairV2(pair).getReserves();

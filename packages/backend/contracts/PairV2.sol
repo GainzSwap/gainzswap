@@ -11,6 +11,8 @@ import { UQ112x112 } from "./libraries/UQ112x112.sol";
 
 import { PairERC20 } from "./abstracts/PairERC20.sol";
 
+import "./types.sol";
+
 contract PairV2 is IPairV2, PairERC20, OwnableUpgradeable {
 	using UQ112x112 for uint224;
 
@@ -71,16 +73,21 @@ contract PairV2 is IPairV2, PairERC20, OwnableUpgradeable {
 	) private {
 		PairStorage storage $ = _getPairStorage();
 
+		require(
+			balance0 <= type(uint112).max && balance1 <= type(uint112).max,
+			"Pair: OVERFLOW"
+		);
+
 		uint32 blockTimestamp = uint32(block.timestamp % 2 ** 32);
 		uint32 timeElapsed = blockTimestamp - $.blockTimestampLast; // Overflow is intentional here
 
 		if (timeElapsed > 0 && reserve0 != 0 && reserve1 != 0) {
-			// Multiplication does not overflow due to the Solidity 0.8 overflow checks
+			// * never overflows, and + overflow is desired
 			$.price0CumulativeLast +=
-				UQ112x112.encode(reserve1).uqdiv(reserve0) *
+				uint(UQ112x112.encode(reserve1).uqdiv(reserve0)) *
 				timeElapsed;
 			$.price1CumulativeLast +=
-				UQ112x112.encode(reserve0).uqdiv(reserve1) *
+				uint(UQ112x112.encode(reserve0).uqdiv(reserve1)) *
 				timeElapsed;
 		}
 
