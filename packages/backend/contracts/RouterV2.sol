@@ -7,29 +7,33 @@ import { UpgradeableBeacon } from "@openzeppelin/contracts/proxy/beacon/Upgradea
 import { SwapFactory } from "./abstracts/SwapFactory.sol";
 import { OldRouter } from "./abstracts/OldRouter.sol";
 
-import { IRouter } from "./interfaces/IRouter.sol";
-import { IPair } from "./interfaces/IPair.sol";
+import { IRouterV2 } from "./interfaces/IRouterV2.sol";
+import { IPairV2 } from "./interfaces/IPairV2.sol";
 
 import { TokenPayment, TokenPayments } from "./libraries/TokenPayments.sol";
-import { DeployGovernance } from "./libraries/DeployGovernance.sol";
+import { OracleLibrary } from "./libraries/OracleLibrary.sol";
+import { DeployGovernanceV2 } from "./libraries/DeployGovernanceV2.sol";
+import { DeployPriceOracle } from "./libraries/DeployPriceOracle.sol";
 import { DeployWNTV } from "./libraries/DeployWNTV.sol";
 import { AMMLibrary } from "./libraries/AMMLibrary.sol";
 import { TransferHelper } from "./libraries/TransferHelper.sol";
 import { Epochs } from "./libraries/Epochs.sol";
+import { LiquidityMathLibrary } from "./libraries/LiquidityMathLibrary.sol";
 
 import { WNTV } from "./tokens/WNTV.sol";
 
-import { GovernanceV2 } from "./Governance.sol";
-import { PairV2, IERC20 } from "./Pair.sol";
+import { GovernanceV2 } from "./GovernanceV2.sol";
+import { PriceOracle } from "./PriceOracle.sol";
+import { PairV2, IERC20 } from "./PairV2.sol";
 
 import "./types.sol";
 
-contract RouterV2 is IRouter, SwapFactory, OldRouter {
+contract RouterV2 is IRouterV2, SwapFactory, OldRouter {
 	using TokenPayments for TokenPayment;
 	using Epochs for Epochs.Storage;
 
 	/// @custom:storage-location erc7201:gainz.RouterV2.storage
-	struct RouterStorage {
+	struct RouterV2Storage {
 		address wNativeToken;
 		address proxyAdmin;
 		address pairsBeacon;
@@ -41,10 +45,10 @@ contract RouterV2 is IRouter, SwapFactory, OldRouter {
 	bytes32 private constant ROUTER_STORAGE_LOCATION =
 		0xae974aecfb7025a5d7fc4d7e9ba067575060084b22f04fa48d6bbae6c0d48d00;
 
-	function _getRouterStorage()
+	function _getRouterV2Storage()
 		private
 		pure
-		returns (RouterStorage storage $)
+		returns (RouterV2Storage storage $)
 	{
 		assembly {
 			$.slot := ROUTER_STORAGE_LOCATION
@@ -53,7 +57,7 @@ contract RouterV2 is IRouter, SwapFactory, OldRouter {
 
 	error CreatePairUnauthorized();
 	modifier canCreatePair() {
-		RouterStorage storage $ = _getRouterStorage();
+		RouterV2Storage storage $ = _getRouterV2Storage();
 
 		if (msg.sender != owner() && msg.sender != $.governance)
 			revert CreatePairUnauthorized();
@@ -84,14 +88,18 @@ contract RouterV2 is IRouter, SwapFactory, OldRouter {
 	error AddressSetAllready();
 
 	function _setGovernance() internal {
-		RouterStorage storage $ = _getRouterStorage();
+		RouterV2Storage storage $ = _getRouterV2Storage();
 
-		$.governance = DeployGovernance.create($.epochs, $.proxyAdmin);
+		$.governance = DeployGovernanceV2.create($.epochs, $.proxyAdmin);
+	}
+
+	function _setPriceOracle() internal {
+		DeployPriceOracle.create();
 	}
 
 	/// @dev Initialisation for testnet after migration from old code
 	function runInit() public onlyOwner {
-		RouterStorage storage $ = _getRouterStorage();
+		RouterV2Storage storage $ = _getRouterV2Storage();
 		if ($.proxyAdmin != address(0)) {
 			revert AddressSetAllready();
 		}
@@ -117,6 +125,7 @@ contract RouterV2 is IRouter, SwapFactory, OldRouter {
 		}
 
 		_setGovernance();
+		_setPriceOracle();
 	}
 
 	// **** END INITIALIZATION ****
@@ -134,15 +143,23 @@ contract RouterV2 is IRouter, SwapFactory, OldRouter {
 		pairAddress = _createPair(
 			paymentA.token,
 			paymentB.token,
-			_getRouterStorage().pairsBeacon
+			_getRouterV2Storage().pairsBeacon
 		);
-
 		(, , liquidity, ) = addLiquidity(
 			paymentA,
 			paymentB,
 			0,
 			0,
 			block.timestamp + 1
+		);
+
+		PriceOracle(OracleLibrary.oracleAddress(address(this))).add(
+			paymentA.token == address(0)
+				? getWrappedNativeToken()
+				: paymentA.token,
+			paymentB.token == address(0)
+				? getWrappedNativeToken()
+				: paymentB.token
 		);
 	}
 
@@ -176,7 +193,7 @@ contract RouterV2 is IRouter, SwapFactory, OldRouter {
 					path[i + 2]
 				)
 				: _to;
-			IPair(
+			IPairV2(
 				AMMLibrary.pairFor(
 					address(this),
 					getPairsBeacon(),
@@ -208,7 +225,7 @@ contract RouterV2 is IRouter, SwapFactory, OldRouter {
 		);
 		require(
 			amounts[amounts.length - 1] >= amountOutMin,
-			"Router: INSUFFICIENT_OUTPUT_AMOUNT"
+			"RouterV2: INSUFFICIENT_OUTPUT_AMOUNT"
 		);
 
 		{
@@ -222,11 +239,11 @@ contract RouterV2 is IRouter, SwapFactory, OldRouter {
 			if (msg.value > 0) {
 				require(
 					msg.value == amountIn,
-					"Router: INVALID_AMOUNT_IN_VALUES"
+					"RouterV2: INVALID_AMOUNT_IN_VALUES"
 				);
 				require(
 					path[0] == getWrappedNativeToken(),
-					"Router: INVALID_PATH"
+					"RouterV2: INVALID_PATH"
 				);
 				WNTV(getWrappedNativeToken()).receiveFor{ value: msg.value }(
 					pair
@@ -262,7 +279,7 @@ contract RouterV2 is IRouter, SwapFactory, OldRouter {
 			revert PairNotListed();
 		}
 
-		(uint reserveA, uint reserveB, ) = IPair(pair).getReserves();
+		(uint reserveA, uint reserveB, ) = IPairV2(pair).getReserves();
 		if (reserveA == 0 && reserveB == 0) {
 			(amountA, amountB) = (amountADesired, amountBDesired);
 		} else {
@@ -306,7 +323,7 @@ contract RouterV2 is IRouter, SwapFactory, OldRouter {
 		paymentA.receiveTokenFor(msg.sender, pair, wNativeToken);
 		paymentB.receiveTokenFor(msg.sender, pair, wNativeToken);
 
-		liquidity = IPair(pair).mint(msg.sender);
+		liquidity = IPairV2(pair).mint(msg.sender);
 	}
 
 	function addLiquidity(
@@ -338,14 +355,14 @@ contract RouterV2 is IRouter, SwapFactory, OldRouter {
 	// ******* VIEWS *******
 
 	function getWrappedNativeToken() public view returns (address) {
-		return _getRouterStorage().wNativeToken;
+		return _getRouterV2Storage().wNativeToken;
 	}
 
 	function getPairsBeacon() public view returns (address) {
-		return _getRouterStorage().pairsBeacon;
+		return _getRouterV2Storage().pairsBeacon;
 	}
 
 	function getGovernance() public view returns (address) {
-		return _getRouterStorage().governance;
+		return _getRouterV2Storage().governance;
 	}
 }

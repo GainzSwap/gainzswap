@@ -4,11 +4,9 @@ pragma solidity ^0.8.28;
 import { BeaconProxy } from "@openzeppelin/contracts/proxy/beacon/BeaconProxy.sol";
 
 import { ISwapFactory } from "../interfaces/ISwapFactory.sol";
-import { IPair } from "../interfaces/IPair.sol";
+import { IPairV2 } from "../interfaces/IPairV2.sol";
 
-import { PairV2 } from "../Pair.sol";
-
-import "hardhat/console.sol";
+import { PairV2 } from "../PairV2.sol";
 
 abstract contract SwapFactory is ISwapFactory {
 	/// @custom:storage-location erc7201:gainz.SwapFactory.storage

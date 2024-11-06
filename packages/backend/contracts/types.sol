@@ -6,7 +6,7 @@ import "hardhat/console.sol";
 struct LiquidityInfo {
 	address pair;
 	uint256 liquidity;
-	uint256 gTokenSupply;
+	uint256 liqValue;
 }
 
 function createLiquidityInfoArray(

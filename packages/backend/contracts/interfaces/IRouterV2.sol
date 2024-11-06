@@ -3,7 +3,7 @@ pragma solidity 0.8.28;
 
 import { TokenPayment } from "../libraries/TokenPayments.sol";
 
-interface IRouter {
+interface IRouterV2 {
 	function createPair(
 		TokenPayment calldata paymentA,
 		TokenPayment calldata paymentB
@@ -21,4 +21,6 @@ interface IRouter {
 		returns (uint amountA, uint amountB, uint liquidity, address pair);
 
 	function getWrappedNativeToken() external view returns (address);
+
+	function getPairsBeacon() external view returns (address);
 }

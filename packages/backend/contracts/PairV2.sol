@@ -4,14 +4,14 @@ pragma solidity ^0.8.28;
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { OwnableUpgradeable } from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 
-import { IPair } from "./interfaces/IPair.sol";
+import { IPairV2 } from "./interfaces/IPairV2.sol";
 
 import { Math } from "./libraries/Math.sol";
 import { UQ112x112 } from "./libraries/UQ112x112.sol";
 
 import { PairERC20 } from "./abstracts/PairERC20.sol";
 
-contract PairV2 is IPair, PairERC20, OwnableUpgradeable {
+contract PairV2 is IPairV2, PairERC20, OwnableUpgradeable {
 	using UQ112x112 for uint224;
 
 	uint public constant MINIMUM_LIQUIDITY = 10 ** 3;
@@ -124,9 +124,13 @@ contract PairV2 is IPair, PairERC20, OwnableUpgradeable {
 		);
 	}
 
-	function price0CumulativeLast() external view returns (uint256) {}
+	function price0CumulativeLast() external view returns (uint256) {
+		return _getPairStorage().price0CumulativeLast;
+	}
 
-	function price1CumulativeLast() external view returns (uint256) {}
+	function price1CumulativeLast() external view returns (uint256) {
+		return _getPairStorage().price1CumulativeLast;
+	}
 
 	// this low-level function should be called from a contract which performs important safety checks
 	function mint(address to) external lock onlyOwner returns (uint liquidity) {
@@ -201,8 +205,8 @@ contract PairV2 is IPair, PairERC20, OwnableUpgradeable {
 		);
 		{
 			// scope for reserve{0,1}Adjusted, avoids stack too deep errors
-			uint balance0Adjusted = (balance0 * 1000) - (amount0In * (3));
-			uint balance1Adjusted = (balance1 * 1000) - (amount1In * (3));
+			uint balance0Adjusted = (balance0 * 1000) - (amount0In * 3);
+			uint balance1Adjusted = (balance1 * 1000) - (amount1In * 3);
 			require(
 				(balance0Adjusted * balance1Adjusted) >=
 					uint(_reserve0) * (_reserve1) * (1000 ** 2),

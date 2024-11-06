@@ -8,7 +8,7 @@ import "../../types.sol";
 
 /// @title GToken Library
 /// @notice This library provides functions for managing GToken attributes, including staking, claiming rewards, and calculating stake weights and rewards.
-library GTokenLib {
+library GTokenV2Lib {
 	/// @dev Attributes struct holds the data related to a participant's stake in the GToken contract.
 	struct Attributes {
 		uint256 rewardPerShare;
@@ -39,7 +39,7 @@ library GTokenLib {
 		// Update supply
 		uint256 supply = 0;
 		for (uint256 index; index < self.lpDetails.length; index++) {
-			supply += self.lpDetails[index].gTokenSupply;
+			supply += self.lpDetails[index].liqValue;
 		}
 		self.supply = supply;
 

@@ -2,10 +2,10 @@
 pragma solidity 0.8.28;
 
 import { Epochs } from "./Epochs.sol";
-import { GovernanceV2 } from "../Governance.sol";
+import { GovernanceV2 } from "../GovernanceV2.sol";
 import { TransparentUpgradeableProxy } from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
 
-library DeployGovernance {
+library DeployGovernanceV2 {
 	function create(
 		Epochs.Storage memory epochs,
 		address proxyAdmin
@@ -22,7 +22,7 @@ library DeployGovernance {
 			? abi.decode(owner, (address))
 			: caller;
 
-		// Deploy the TransparentUpgradeableProxy and initialize the Governance contract
+		// Deploy the TransparentUpgradeableProxy and initialize the GovernanceV2 contract
 		return
 			address(
 				new TransparentUpgradeableProxy(

@@ -32,9 +32,16 @@ describe("Governance", function () {
 
       await governance
         .connect(user)
-        .stake({ token: tokenA, nonce: 0, amount: stakeAmount }, epochsLocked, [tokenA], [tokenA, tokenB], 0, 0, {
-          value: stakeAmount,
-        });
+        .stake(
+          { token: tokenA, nonce: 0, amount: stakeAmount },
+          epochsLocked,
+          [[tokenA], [tokenA, tokenB], []],
+          0,
+          0,
+          {
+            value: stakeAmount,
+          },
+        );
 
       // Assert for native coin staking
 
@@ -42,16 +49,22 @@ describe("Governance", function () {
 
       expect(nativeStakingAttr.rewardPerShare).to.equal(0);
       expect(nativeStakingAttr.epochStaked).to.equal(0);
-      // expect(nativeStakingAttr.stakeWeight).to.gt(0);
+      expect(nativeStakingAttr.stakeWeight).to.gt(0);
       expect(nativeStakingAttr.epochsLocked).to.equal(epochsLocked);
       expect(nativeStakingAttr.lpDetails[0].liquidity).to.gt(0);
-      // expect(nativeStakingAttr.lpDetails[0].gTokenSupply).to.gt(0);
+      expect(nativeStakingAttr.lpDetails[0].liqValue).to.gt(0);
 
       // Act for ERC20 staking
 
       await governance
         .connect(user)
-        .stake({ token: tokenB, nonce: 0, amount: stakeAmount }, epochsLocked, [tokenB], [tokenB, tokenA], 0, 0);
+        .stake(
+          { token: tokenB, nonce: 0, amount: stakeAmount },
+          epochsLocked,
+          [[tokenB], [tokenB, tokenA], []],
+          0,
+          0,
+        );
 
       // Assert for ERC20 staking
 
@@ -59,10 +72,10 @@ describe("Governance", function () {
 
       expect(erc20StakingAttr.rewardPerShare).to.equal(0);
       expect(erc20StakingAttr.epochStaked).to.equal(0);
-      // expect(erc20StakingAttr.stakeWeight).to.gt(0);
+      expect(erc20StakingAttr.stakeWeight).to.gt(0);
       expect(erc20StakingAttr.epochsLocked).to.equal(epochsLocked);
       expect(erc20StakingAttr.lpDetails[0].liquidity).to.gt(0);
-      // expect(erc20StakingAttr.lpDetails[0].gTokenSupply).to.gt(0);
+      expect(erc20StakingAttr.lpDetails[0].liqValue).to.gt(0);
     });
   });
 });

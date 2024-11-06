@@ -3,9 +3,23 @@ import { expect } from "chai";
 
 import { TokenPaymentStruct } from "../../typechain-types/contracts/Router";
 
-import { BaseContract, BigNumberish, getBigInt, parseEther, ZeroAddress } from "ethers";
+import {
+  BaseContract,
+  BigNumberish,
+  getBigInt,
+  getCreate2Address,
+  keccak256,
+  parseEther,
+  solidityPackedKeccak256,
+  ZeroAddress,
+} from "ethers";
 import { getPairProxyAddress } from "./utilities";
+
+import PriceOracleBuild from "../../artifacts/contracts/PriceOracle.sol/PriceOracle.json";
 import { getRouterLibraries } from "../../utilities";
+import { time } from "@nomicfoundation/hardhat-network-helpers";
+import { hours } from "@nomicfoundation/hardhat-network-helpers/dist/src/helpers/time/duration";
+``;
 
 export async function routerFixture() {
   const [owner, ...users] = await ethers.getSigners();
@@ -24,6 +38,16 @@ export async function routerFixture() {
   const governance = await ethers.getContractAt("GovernanceV2", governanceAddress);
   const gTokenAddress = await governance.getGToken();
   const gToken = await ethers.getContractAt("GTokenV2", gTokenAddress);
+
+  const priceOracle = await ethers.getContractAt(
+    "PriceOracle",
+    getCreate2Address(
+      routerAddress,
+      solidityPackedKeccak256(["address"], [routerAddress]),
+      keccak256(PriceOracleBuild.bytecode),
+    ),
+  );
+  expect(await priceOracle.router()).to.eq(routerAddress);
 
   let tokensCreated = 0;
   const createToken = async (decimals: BigNumberish) => {
@@ -102,6 +126,9 @@ export async function routerFixture() {
     expect(await pair.token0()).to.eq(tokenA);
     expect(await pair.token1()).to.eq(tokenB);
     expect(await pair.balanceOf(owner)).to.be.gt(0);
+
+    await priceOracle.update(pair);
+    expect(await priceOracle.consult(pair, tokenA, payments[0].amount)).to.gt(0);
 
     return payments;
   }
