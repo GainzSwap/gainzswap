@@ -15,9 +15,8 @@ library GTokenV2Lib {
 		uint256 epochStaked;
 		uint256 epochsLocked;
 		uint256 lastClaimEpoch;
-		uint256 supply;
 		uint256 stakeWeight;
-		LiquidityInfo[] lpDetails;
+		LiquidityInfo lpDetails;
 	}
 
 	// Constants for lock periods and percentage loss calculations
@@ -36,17 +35,14 @@ library GTokenV2Lib {
 			"GToken: Invalid epochsLocked"
 		);
 
-		// Update supply
-		uint256 supply = 0;
-		for (uint256 index; index < self.lpDetails.length; index++) {
-			supply += self.lpDetails[index].liqValue;
-		}
-		self.supply = supply;
-
 		// Calculate stake weight based on supply and epochs locked
-		self.stakeWeight = self.supply * epochsLocked;
+		self.stakeWeight = self.lpDetails.liqValue * epochsLocked;
 
 		return self;
+	}
+
+	function supply(Attributes memory self) internal pure returns (uint256) {
+		return self.lpDetails.liqValue;
 	}
 
 	/// @notice Calculates the number of epochs that have elapsed since staking.
@@ -91,6 +87,15 @@ library GTokenV2Lib {
 
 		uint256 voteWeight = ((9 * xPow) / mPow) + 1;
 
-		return self.supply * voteWeight;
+		return self.lpDetails.liqValue * voteWeight;
+	}
+
+	function hasNativeToken(
+		Attributes memory self,
+		address wNativeToken
+	) internal pure returns (bool itHas) {
+		itHas =
+			self.lpDetails.token0 == wNativeToken ||
+			self.lpDetails.token1 == wNativeToken;
 	}
 }

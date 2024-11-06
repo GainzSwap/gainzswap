@@ -4,7 +4,8 @@ pragma solidity ^0.8.28;
 import "hardhat/console.sol";
 
 struct LiquidityInfo {
-	address pair;
+	address token0;
+	address token1;
 	uint256 liquidity;
 	uint256 liqValue;
 }

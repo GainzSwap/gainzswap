@@ -17,18 +17,17 @@ import { getPairProxyAddress } from "./utilities";
 
 import PriceOracleBuild from "../../artifacts/contracts/PriceOracle.sol/PriceOracle.json";
 import { getRouterLibraries } from "../../utilities";
-import { time } from "@nomicfoundation/hardhat-network-helpers";
-import { hours } from "@nomicfoundation/hardhat-network-helpers/dist/src/helpers/time/duration";
-``;
 
 export async function routerFixture() {
   const [owner, ...users] = await ethers.getSigners();
+
+  const gainzToken = await ethers.deployContract("TestERC20", ["GainZ Token", "GNZ", 18]);
 
   const RouterFactory = await ethers.getContractFactory("RouterV2", {
     libraries: await getRouterLibraries(ethers),
   });
   const router = await RouterFactory.deploy();
-  await router.initialize(owner);
+  await router.initialize(owner, gainzToken);
 
   const wrappedNativeToken = await router.getWrappedNativeToken();
   const routerAddress = await router.getAddress();
@@ -137,6 +136,7 @@ export async function routerFixture() {
     router,
     governance,
     gToken,
+    gainzToken,
     createPair,
     createToken,
     owner,

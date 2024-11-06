@@ -21,10 +21,17 @@ contract GTokenV2 is SFT {
 	using GTokenV2Lib for GTokenV2Lib.Attributes;
 	using Epochs for Epochs.Storage;
 
+	struct Reward {
+		uint256 rewardPerShare;
+		uint256 rewardsReserve;
+	}
+
 	/// @custom:storage-location erc7201:gainz.GToken.storage
 	struct GTokenStorage {
 		uint256 totalStakeWeight;
 		uint256 totalSupply;
+		mapping(address => Reward) tokenRewards;
+		address protocolFeesCollector;
 		Epochs.Storage epochs;
 	}
 
@@ -65,7 +72,7 @@ contract GTokenV2 is SFT {
 		uint256 rewardPerShare,
 		uint256 epochsLocked,
 		uint256 currentEpoch,
-		LiquidityInfo[] memory lpDetails
+		LiquidityInfo memory lpDetails
 	) external canUpdate returns (uint256) {
 		// Create GToken attributes and compute the stake weight
 		GTokenV2Lib.Attributes memory attributes = GTokenV2Lib
@@ -74,14 +81,13 @@ contract GTokenV2 is SFT {
 				epochStaked: currentEpoch,
 				lastClaimEpoch: currentEpoch,
 				epochsLocked: epochsLocked,
-				supply: 0,
 				stakeWeight: 0,
 				lpDetails: lpDetails
 			})
 			.computeStakeWeight();
 
 		// Mint the GToken with the specified attributes and return the token ID
-		return _mint(to, attributes.supply, abi.encode(attributes));
+		return _mint(to, attributes.supply(), abi.encode(attributes));
 	}
 
 	function update(
@@ -90,7 +96,7 @@ contract GTokenV2 is SFT {
 		GTokenV2Lib.Attributes memory attr
 	) external canUpdate returns (uint256) {
 		attr = attr.computeStakeWeight();
-		return super.update(user, nonce, attr.supply, abi.encode(attr));
+		return super.update(user, nonce, attr.supply(), abi.encode(attr));
 	}
 
 	/**
@@ -163,7 +169,9 @@ contract GTokenV2 is SFT {
 		address user
 	) public view returns (GTokenV2Balance[] memory) {
 		SftBalance[] memory _sftBals = _sftBalance(user);
-		GTokenV2Balance[] memory balance = new GTokenV2Balance[](_sftBals.length);
+		GTokenV2Balance[] memory balance = new GTokenV2Balance[](
+			_sftBals.length
+		);
 
 		for (uint256 i = 0; i < _sftBals.length; i++) {
 			SftBalance memory _sftBal = _sftBals[i];
@@ -190,6 +198,7 @@ contract GTokenV2 is SFT {
 		return 18;
 	}
 
+	/// @dev the attributes beign updated must have be updated by calling the `computeStakeWeight` method on them
 	function _update(
 		address from,
 		address to,
@@ -209,12 +218,12 @@ contract GTokenV2 is SFT {
 				// We are minting, so increase staking weight
 				GTokenStorage storage $ = _getGTokenStorage();
 				$.totalStakeWeight += attr.stakeWeight;
-				$.totalSupply += attr.supply;
+				$.totalSupply += attr.supply();
 			} else if (from != address(0) && to == address(0)) {
 				// We are burning, so decrease staking weight
 				GTokenStorage storage $ = _getGTokenStorage();
 				$.totalStakeWeight -= attr.stakeWeight;
-				$.totalSupply -= attr.supply;
+				$.totalSupply -= attr.supply();
 			}
 		}
 	}

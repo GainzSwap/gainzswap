@@ -1,14 +1,17 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
+import { IERC20 } from "@openzeppelin/contracts/interfaces/IERC20.sol";
 import { ERC1155HolderUpgradeable } from "@openzeppelin/contracts-upgradeable/token/ERC1155/utils/ERC1155HolderUpgradeable.sol";
 import { IERC20Metadata } from "@openzeppelin/contracts/interfaces/IERC20Metadata.sol";
 import { OwnableUpgradeable } from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import { TransparentUpgradeableProxy } from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
 
-import { Epochs } from "./libraries/Epochs.sol";
 import { TokenPayment, TokenPayments } from "./libraries/TokenPayments.sol";
 import { OracleLibrary } from "./libraries/OracleLibrary.sol";
+import { FixedPoint128 } from "./libraries/FixedPoint128.sol";
+import { FullMath } from "./libraries/FullMath.sol";
+import { Epochs } from "./libraries/Epochs.sol";
 
 import { GTokenV2, GTokenV2Lib } from "./tokens/GToken/GTokenV2.sol";
 
@@ -49,11 +52,13 @@ contract GovernanceV2 is ERC1155HolderUpgradeable, OwnableUpgradeable {
 	struct GovernanceStorage {
 		uint256 rewardPerShare;
 		uint256 rewardsReserve;
+		address protocolFeesCollector;
+		// The following values should be immutable
 		address gtoken;
+		address gainzToken;
 		address router;
 		address wNativeToken;
 		Epochs.Storage epochs;
-		address protocolFeesCollector;
 	}
 
 	// keccak256(abi.encode(uint256(keccak256("gainz.GovernanceV2.storage")) - 1)) & ~bytes32(uint256(0xff));
@@ -76,6 +81,7 @@ contract GovernanceV2 is ERC1155HolderUpgradeable, OwnableUpgradeable {
 	function initialize(
 		Epochs.Storage memory epochs,
 		address protocolFeesCollector,
+		address gainzToken,
 		address proxyAdmin
 	) public initializer {
 		address router = msg.sender;
@@ -98,6 +104,9 @@ contract GovernanceV2 is ERC1155HolderUpgradeable, OwnableUpgradeable {
 			"Invalid Protocol Fees collector"
 		);
 		$.protocolFeesCollector = protocolFeesCollector;
+
+		require(gainzToken != address(0), "Invalid gainzToken");
+		$.gainzToken = gainzToken;
 	}
 
 	error InvalidPayment(TokenPayment payment, uint256 value);
@@ -233,8 +242,18 @@ contract GovernanceV2 is ERC1155HolderUpgradeable, OwnableUpgradeable {
 			if (paymentA.token != payment.token) paymentA.approve($.router);
 			if (paymentB.token != payment.token) paymentB.approve($.router);
 
-			(, , liqInfo.liquidity, liqInfo.pair) = RouterV2($.router)
-				.addLiquidity(paymentA, paymentB, 0, 0, block.timestamp + 1);
+			// Set liquidity info
+			(liqInfo.token0, liqInfo.token1) = paymentA.token < paymentB.token
+				? (paymentA.token, paymentB.token)
+				: (paymentB.token, paymentA.token);
+
+			(, , liqInfo.liquidity, ) = RouterV2($.router).addLiquidity(
+				paymentA,
+				paymentB,
+				0,
+				0,
+				block.timestamp + 1
+			);
 
 			liqInfo.liqValue = _computeLiqValue(
 				$,
@@ -250,13 +269,90 @@ contract GovernanceV2 is ERC1155HolderUpgradeable, OwnableUpgradeable {
 				$.rewardPerShare,
 				epochsLocked,
 				$.epochs.currentEpoch(),
-				createLiquidityInfoArray(liqInfo)
+				liqInfo
 			);
+	}
+
+	/// @notice Updates the rewards reserve by adding the specified amount.
+	/// @dev Only callable by the contract owner or authorized party.
+	/// @param amount The amount to add to the rewards reserve.
+	function updateRewardReserve(uint256 amount) external {
+		GovernanceStorage storage $ = _getGovernanceStorage();
+
+		require(amount > 0, "Amount must be greater than zero");
+
+		// Transfer the amount of Gainz tokens to the contract
+		IERC20($.gainzToken).transferFrom(msg.sender, address(this), amount);
+
+		// Update the rewards reserve
+		$.rewardsReserve += amount;
+
+		uint256 totalStakeWeight = GTokenV2($.gtoken).totalStakeWeight();
+		if (totalStakeWeight > 0) {
+			$.rewardPerShare += FullMath.mulDiv(
+				amount,
+				FixedPoint128.Q128,
+				totalStakeWeight
+			);
+		}
+	}
+
+	function _calculateClaimableReward(
+		address user,
+		uint256 nonce
+	)
+		internal
+		view
+		returns (
+			uint256 claimableReward,
+			GTokenV2Lib.Attributes memory attributes
+		)
+	{
+		GovernanceStorage storage $ = _getGovernanceStorage();
+		attributes = GTokenV2($.gtoken).getBalanceAt(user, nonce).attributes;
+
+		claimableReward = FullMath.mulDiv(
+			attributes.stakeWeight,
+			$.rewardPerShare - attributes.rewardPerShare,
+			FixedPoint128.Q128
+		);
+	}
+
+	/// @notice Allows a user to claim their accumulated rewards based on their current stake.
+	/// @dev This function will transfer the calculated claimable reward to the user,
+	/// 	 update the user's reward attributes, and decrease the rewards reserve.
+	/// @param nonce The specific nonce representing a unique staking position of the user.
+	/// @return Nonce of the updated GToken for the user after claiming the reward.
+	function claimRewards(uint256 nonce) external returns (uint256) {
+		GovernanceStorage storage $ = _getGovernanceStorage();
+
+		address user = msg.sender;
+		(
+			uint256 claimableReward,
+			GTokenV2Lib.Attributes memory attributes
+		) = _calculateClaimableReward(user, nonce);
+
+		require(claimableReward > 0, "Governance: No rewards to claim");
+
+		$.rewardsReserve -= claimableReward;
+		attributes.rewardPerShare = $.rewardPerShare;
+		attributes.lastClaimEpoch = $.epochs.currentEpoch();
+
+		IERC20($.gainzToken).transfer(user, claimableReward);
+		return GTokenV2($.gtoken).update(user, nonce, attributes);
 	}
 
 	// ******* VIEWS *******
 
 	function getGToken() external view returns (address) {
 		return _getGovernanceStorage().gtoken;
+	}
+
+	function rewardsReserve() external view returns (uint256) {
+		return _getGovernanceStorage().rewardsReserve;
+	}
+
+	function rewardPerShare() external view returns (uint256) {
+		return _getGovernanceStorage().rewardPerShare;
 	}
 }

@@ -8,6 +8,7 @@ import { TransparentUpgradeableProxy } from "@openzeppelin/contracts/proxy/trans
 library DeployGovernanceV2 {
 	function create(
 		Epochs.Storage memory epochs,
+		address gainzToken,
 		address proxyAdmin
 	) external returns (address) {
 		address caller = msg.sender;
@@ -32,6 +33,7 @@ library DeployGovernanceV2 {
 						GovernanceV2.initialize.selector,
 						epochs,
 						feeCollector,
+						gainzToken,
 						proxyAdmin
 					)
 				)

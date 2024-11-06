@@ -79,18 +79,25 @@ contract RouterV2 is IRouterV2, SwapFactory, OldRouter {
 
 	// **** INITIALIZATION ****
 
-	function initialize(address initialOwner) public initializer {
+	function initialize(
+		address initialOwner,
+		address gainzToken
+	) public initializer {
 		__Ownable_init(initialOwner);
 
-		runInit();
+		runInit(gainzToken);
 	}
 
 	error AddressSetAllready();
 
-	function _setGovernance() internal {
+	function _setGovernance(address gainzToken) internal {
 		RouterV2Storage storage $ = _getRouterV2Storage();
 
-		$.governance = DeployGovernanceV2.create($.epochs, $.proxyAdmin);
+		$.governance = DeployGovernanceV2.create(
+			$.epochs,
+			gainzToken,
+			$.proxyAdmin
+		);
 	}
 
 	function _setPriceOracle() internal {
@@ -98,7 +105,7 @@ contract RouterV2 is IRouterV2, SwapFactory, OldRouter {
 	}
 
 	/// @dev Initialisation for testnet after migration from old code
-	function runInit() public onlyOwner {
+	function runInit(address gainzToken) public onlyOwner {
 		RouterV2Storage storage $ = _getRouterV2Storage();
 		if ($.proxyAdmin != address(0)) {
 			revert AddressSetAllready();
@@ -124,7 +131,7 @@ contract RouterV2 is IRouterV2, SwapFactory, OldRouter {
 			$.epochs.initialize(24 hours);
 		}
 
-		_setGovernance();
+		_setGovernance(gainzToken);
 		_setPriceOracle();
 	}
 
