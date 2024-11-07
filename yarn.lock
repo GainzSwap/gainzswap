@@ -1088,6 +1088,7 @@ __metadata:
     "@openzeppelin/contracts": ^5.0.2
     "@openzeppelin/contracts-upgradeable": ^5.0.2
     "@openzeppelin/hardhat-upgrades": ^3.3.0
+    "@prb/math": ^4.1.0
     "@typechain/ethers-v5": ~11.1.2
     "@typechain/ethers-v6": ~0.5.1
     "@typechain/hardhat": ~9.1.0
@@ -2733,6 +2734,13 @@ __metadata:
     typescript:
       optional: true
   checksum: d466caff22acecbe978b65a7a05ec8a0b92cd59b28dd10f44de0bbabd54805dcbe3a11717737daa573dbb58d23d4c498a2f6e1211fac9fb6c5ccc21f9a2e106b
+  languageName: node
+  linkType: hard
+
+"@prb/math@npm:^4.1.0":
+  version: 4.1.0
+  resolution: "@prb/math@npm:4.1.0"
+  checksum: 97c8199dc754ffb9c14c408a801630cb8a4d3a8c03ffda2c6db1cb5176110006aa6923a6262100abb26c2d15b8d872bf7b8ad51a6ee6972da8a0d783bb40ea64
   languageName: node
   linkType: hard
 

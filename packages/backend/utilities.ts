@@ -1,13 +1,18 @@
 import { ethers as e } from "hardhat";
 
 export async function getRouterLibraries(ethers: typeof e) {
+  const OracleLibrary = await (await ethers.deployContract("OracleLibrary")).getAddress();
+
   return {
+    OracleLibrary,
     DeployWNTV: await (await ethers.deployContract("DeployWNTV")).getAddress(),
-    DeployGovernance: await (
+    DeployPriceOracle: await (await ethers.deployContract("DeployPriceOracle")).getAddress(),
+    DeployGovernanceV2: await (
       await (
-        await ethers.getContractFactory("DeployGovernance", {
+        await ethers.getContractFactory("DeployGovernanceV2", {
           libraries: {
-            DeployGToken: await (await ethers.deployContract("DeployGToken")).getAddress(),
+            DeployGTokenV2: await (await ethers.deployContract("DeployGTokenV2")).getAddress(),
+            OracleLibrary,
           },
         })
       ).deploy()

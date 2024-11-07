@@ -40,7 +40,7 @@ abstract contract PairERC20 is Initializable, IERC20, IERC20Errors {
 		0x6e71edae12b1b97f4d1f60370fef10105fa2faae0126114a169c64845d6126c9;
 	mapping(address => uint) public nonces;
 
-	// called once by the router at time of deployment
+	// called once by the RouterV2 at time of deployment
 	function __PairERC20_init() internal onlyInitializing {
 		PairERC20Storage storage $ = _getPairERC20Storage();
 

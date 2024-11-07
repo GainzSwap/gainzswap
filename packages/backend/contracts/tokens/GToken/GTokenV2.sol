@@ -1,30 +1,37 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import { GTokenLib } from "./GTokenLib.sol";
+import { GTokenV2Lib } from "./GTokenV2Lib.sol";
 import { SFT } from "../../abstracts/SFT.sol";
 import { Epochs } from "../../libraries/Epochs.sol";
 
 import "../../types.sol";
 
-struct GTokenBalance {
+struct GTokenV2Balance {
 	uint256 nonce;
 	uint256 amount;
 	uint256 votePower;
-	GTokenLib.Attributes attributes;
+	GTokenV2Lib.Attributes attributes;
 }
 
 /// @title GToken Contract
 /// @notice This contract handles the minting of governance tokens (GToken) used in the ADEX platform.
 /// @dev The contract extends a semi-fungible token (SFT) and uses GToken attributes for staking.
 contract GTokenV2 is SFT {
-	using GTokenLib for GTokenLib.Attributes;
+	using GTokenV2Lib for GTokenV2Lib.Attributes;
 	using Epochs for Epochs.Storage;
+
+	struct Reward {
+		uint256 rewardPerShare;
+		uint256 rewardsReserve;
+	}
 
 	/// @custom:storage-location erc7201:gainz.GToken.storage
 	struct GTokenStorage {
 		uint256 totalStakeWeight;
 		uint256 totalSupply;
+		mapping(address => Reward) tokenRewards;
+		address protocolFeesCollector;
 		Epochs.Storage epochs;
 	}
 
@@ -65,32 +72,31 @@ contract GTokenV2 is SFT {
 		uint256 rewardPerShare,
 		uint256 epochsLocked,
 		uint256 currentEpoch,
-		LiquidityInfo[] memory lpDetails
+		LiquidityInfo memory lpDetails
 	) external canUpdate returns (uint256) {
 		// Create GToken attributes and compute the stake weight
-		GTokenLib.Attributes memory attributes = GTokenLib
+		GTokenV2Lib.Attributes memory attributes = GTokenV2Lib
 			.Attributes({
 				rewardPerShare: rewardPerShare,
 				epochStaked: currentEpoch,
 				lastClaimEpoch: currentEpoch,
 				epochsLocked: epochsLocked,
-				supply: 0,
 				stakeWeight: 0,
 				lpDetails: lpDetails
 			})
 			.computeStakeWeight();
 
 		// Mint the GToken with the specified attributes and return the token ID
-		return _mint(to, attributes.supply, abi.encode(attributes));
+		return _mint(to, attributes.supply(), abi.encode(attributes));
 	}
 
 	function update(
 		address user,
 		uint256 nonce,
-		GTokenLib.Attributes memory attr
+		GTokenV2Lib.Attributes memory attr
 	) external canUpdate returns (uint256) {
 		attr = attr.computeStakeWeight();
-		return super.update(user, nonce, attr.supply, abi.encode(attr));
+		return super.update(user, nonce, attr.supply(), abi.encode(attr));
 	}
 
 	/**
@@ -102,7 +108,7 @@ contract GTokenV2 is SFT {
 	 * @param user The address of the user whose balance is being queried.
 	 * @param nonce The nonce for the specific GToken to retrieve.
 	 *
-	 * @return GTokenBalance A struct containing the nonce, amount, and attributes of the GToken.
+	 * @return GTokenV2Balance A struct containing the nonce, amount, and attributes of the GToken.
 	 *
 	 * Requirements:
 	 * - The user must have a GToken balance at the specified nonce.
@@ -110,28 +116,28 @@ contract GTokenV2 is SFT {
 	function getBalanceAt(
 		address user,
 		uint256 nonce
-	) public view returns (GTokenBalance memory) {
+	) public view returns (GTokenV2Balance memory) {
 		require(
 			hasSFT(user, nonce),
 			"No GToken balance found at nonce for user"
 		);
 
 		return
-			_packageGTokenBalance(
+			_packageGTokenV2Balance(
 				nonce,
 				balanceOf(user, nonce),
 				_getRawTokenAttributes(nonce)
 			);
 	}
 
-	function _packageGTokenBalance(
+	function _packageGTokenV2Balance(
 		uint256 nonce,
 		uint256 amount,
 		bytes memory attr
-	) private view returns (GTokenBalance memory) {
-		GTokenLib.Attributes memory attrUnpacked = abi.decode(
+	) private view returns (GTokenV2Balance memory) {
+		GTokenV2Lib.Attributes memory attrUnpacked = abi.decode(
 			attr,
-			(GTokenLib.Attributes)
+			(GTokenV2Lib.Attributes)
 		);
 		uint256 epochsLeft = attrUnpacked.epochsLeft(
 			attrUnpacked.epochsElapsed(
@@ -141,7 +147,7 @@ contract GTokenV2 is SFT {
 		uint256 votePower = attrUnpacked.votePower(epochsLeft);
 
 		return
-			GTokenBalance({
+			GTokenV2Balance({
 				nonce: nonce,
 				amount: amount,
 				attributes: attrUnpacked,
@@ -156,19 +162,21 @@ contract GTokenV2 is SFT {
 	 *
 	 * @param user The address of the user whose balances are being queried.
 	 *
-	 * @return GTokenBalance[] An array of structs, each containing the nonce, amount, and attributes
+	 * @return GTokenV2Balance[] An array of structs, each containing the nonce, amount, and attributes
 	 * of the user's GToken.
 	 */
-	function getGTokenBalance(
+	function getGTokenV2Balance(
 		address user
-	) public view returns (GTokenBalance[] memory) {
+	) public view returns (GTokenV2Balance[] memory) {
 		SftBalance[] memory _sftBals = _sftBalance(user);
-		GTokenBalance[] memory balance = new GTokenBalance[](_sftBals.length);
+		GTokenV2Balance[] memory balance = new GTokenV2Balance[](
+			_sftBals.length
+		);
 
 		for (uint256 i = 0; i < _sftBals.length; i++) {
 			SftBalance memory _sftBal = _sftBals[i];
 
-			balance[i] = _packageGTokenBalance(
+			balance[i] = _packageGTokenV2Balance(
 				_sftBal.nonce,
 				_sftBal.amount,
 				_sftBal.attributes
@@ -190,6 +198,7 @@ contract GTokenV2 is SFT {
 		return 18;
 	}
 
+	/// @dev the attributes beign updated must have be updated by calling the `computeStakeWeight` method on them
 	function _update(
 		address from,
 		address to,
@@ -200,22 +209,66 @@ contract GTokenV2 is SFT {
 
 		for (uint256 i; i < ids.length; i++) {
 			uint256 id = ids[i];
-			GTokenLib.Attributes memory attr = abi.decode(
+			GTokenV2Lib.Attributes memory attr = abi.decode(
 				_getRawTokenAttributes(id),
-				(GTokenLib.Attributes)
+				(GTokenV2Lib.Attributes)
 			);
 
 			if (from == address(0) && to != address(0)) {
 				// We are minting, so increase staking weight
 				GTokenStorage storage $ = _getGTokenStorage();
 				$.totalStakeWeight += attr.stakeWeight;
-				$.totalSupply += attr.supply;
+				$.totalSupply += attr.supply();
 			} else if (from != address(0) && to == address(0)) {
 				// We are burning, so decrease staking weight
 				GTokenStorage storage $ = _getGTokenStorage();
 				$.totalStakeWeight -= attr.stakeWeight;
-				$.totalSupply -= attr.supply;
+				$.totalSupply -= attr.supply();
 			}
 		}
+	}
+
+	/// @notice Splits a GToken into portions and distributes it to the specified addresses.
+	/// @dev If an address is the zero address, the allotted portion is burned.
+	/// This function can be called by the contract owner or the token's owner.
+	/// @param nonce The nonce of the GToken to split.
+	/// @param addresses An array of addresses to receive the split portions.
+	/// @param liquidityPortions An array of liquidityPortions representing the amounts to be split.
+	/// @return splitNonces An array of nonces for the newly minted split tokens.
+	function split(
+		uint256 nonce,
+		address[] calldata addresses,
+		uint256[] calldata liquidityPortions
+	) external returns (uint256[] memory splitNonces) {
+		require(
+			addresses.length > 0 &&
+				addresses.length == liquidityPortions.length,
+			"Invalid Addresses and portions"
+		);
+
+		address user = addresses[0];
+
+		require(
+			hasSFT(user, nonce) || isOperator(msg.sender),
+			"Caller not authorized"
+		);
+
+		GTokenV2Lib.Attributes memory attributes = getBalanceAt(user, nonce)
+			.attributes;
+		GTokenV2Lib.Attributes[] memory splitAttributes = attributes.split(
+			liquidityPortions
+		);
+
+		splitNonces = new uint256[](splitAttributes.length);
+		for (uint256 i = 0; i < splitAttributes.length; i++) {
+			splitNonces[i] = _mint(
+				addresses[i],
+				splitAttributes[i].supply(),
+				abi.encode(splitAttributes[i])
+			);
+		}
+
+		// Burn the original token after splitting
+		_burn(user, nonce, attributes.supply());
 	}
 }

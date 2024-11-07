@@ -42,6 +42,14 @@ library TokenPayments {
 		}
 	}
 
+	function sendFungibleToken(
+		address token,
+		uint256 amount,
+		address to
+	) internal {
+		sendToken(TokenPayment({ token: token, amount: amount, nonce: 0 }), to);
+	}
+
 	function sendToken(TokenPayment memory payment, address to) internal {
 		if (payment.nonce == 0) {
 			uint256 beforeNativeBal = address(this).balance;

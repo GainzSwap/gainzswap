@@ -52,11 +52,15 @@ abstract contract SFT is ERC1155Upgradeable {
 	}
 
 	modifier canUpdate() {
-		if (!_getSFTStorage().updateOperators[msg.sender]) {
+		if (!isOperator(msg.sender)) {
 			revert ActionNotAllowed(msg.sender);
 		}
 
 		_;
+	}
+
+	function isOperator(address operator) public view returns (bool) {
+		return _getSFTStorage().updateOperators[operator];
 	}
 
 	/// @dev Internal function to mint new tokens with attributes and store the nonce.

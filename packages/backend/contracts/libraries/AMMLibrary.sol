@@ -3,8 +3,8 @@ pragma solidity 0.8.28;
 
 import { BeaconProxy } from "@openzeppelin/contracts/proxy/beacon/BeaconProxy.sol";
 
-import { IPair } from "../interfaces/IPair.sol";
-import { PairV2 } from "../Pair.sol";
+import { IPairV2 } from "../interfaces/IPairV2.sol";
+import { PairV2 } from "../PairV2.sol";
 
 import "../types.sol";
 
@@ -29,7 +29,7 @@ library AMMLibrary {
 		address tokenB
 	) internal view returns (uint reserveA, uint reserveB) {
 		(address token0, ) = sortTokens(tokenA, tokenB);
-		(uint reserve0, uint reserve1, ) = IPair(
+		(uint reserve0, uint reserve1, ) = IPairV2(
 			pairFor(router, pairsBeacon, tokenA, tokenB)
 		).getReserves();
 		(reserveA, reserveB) = tokenA == token0

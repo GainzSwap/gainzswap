@@ -4,14 +4,16 @@ pragma solidity ^0.8.28;
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { OwnableUpgradeable } from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 
-import { IPair } from "./interfaces/IPair.sol";
+import { IPairV2 } from "./interfaces/IPairV2.sol";
 
 import { Math } from "./libraries/Math.sol";
 import { UQ112x112 } from "./libraries/UQ112x112.sol";
 
 import { PairERC20 } from "./abstracts/PairERC20.sol";
 
-contract PairV2 is IPair, PairERC20, OwnableUpgradeable {
+import "./types.sol";
+
+contract PairV2 is IPairV2, PairERC20, OwnableUpgradeable {
 	using UQ112x112 for uint224;
 
 	uint public constant MINIMUM_LIQUIDITY = 10 ** 3;
@@ -71,16 +73,21 @@ contract PairV2 is IPair, PairERC20, OwnableUpgradeable {
 	) private {
 		PairStorage storage $ = _getPairStorage();
 
+		require(
+			balance0 <= type(uint112).max && balance1 <= type(uint112).max,
+			"Pair: OVERFLOW"
+		);
+
 		uint32 blockTimestamp = uint32(block.timestamp % 2 ** 32);
 		uint32 timeElapsed = blockTimestamp - $.blockTimestampLast; // Overflow is intentional here
 
 		if (timeElapsed > 0 && reserve0 != 0 && reserve1 != 0) {
-			// Multiplication does not overflow due to the Solidity 0.8 overflow checks
+			// * never overflows, and + overflow is desired
 			$.price0CumulativeLast +=
-				UQ112x112.encode(reserve1).uqdiv(reserve0) *
+				uint(UQ112x112.encode(reserve1).uqdiv(reserve0)) *
 				timeElapsed;
 			$.price1CumulativeLast +=
-				UQ112x112.encode(reserve0).uqdiv(reserve1) *
+				uint(UQ112x112.encode(reserve0).uqdiv(reserve1)) *
 				timeElapsed;
 		}
 
@@ -124,9 +131,13 @@ contract PairV2 is IPair, PairERC20, OwnableUpgradeable {
 		);
 	}
 
-	function price0CumulativeLast() external view returns (uint256) {}
+	function price0CumulativeLast() external view returns (uint256) {
+		return _getPairStorage().price0CumulativeLast;
+	}
 
-	function price1CumulativeLast() external view returns (uint256) {}
+	function price1CumulativeLast() external view returns (uint256) {
+		return _getPairStorage().price1CumulativeLast;
+	}
 
 	// this low-level function should be called from a contract which performs important safety checks
 	function mint(address to) external lock onlyOwner returns (uint liquidity) {
@@ -155,9 +166,35 @@ contract PairV2 is IPair, PairERC20, OwnableUpgradeable {
 		emit Mint(msg.sender, amount0, amount1);
 	}
 
+	// this low-level function should be called from a contract which performs important safety checks
 	function burn(
 		address to
-	) external returns (uint256 amount0, uint256 amount1) {}
+	) external lock onlyOwner returns (uint amount0, uint amount1) {
+		PairStorage storage $ = _getPairStorage();
+
+		(uint112 _reserve0, uint112 _reserve1) = ($.reserve0, $.reserve1); // gas savings
+		address _token0 = $.token0; // gas savings
+		address _token1 = $.token1; // gas savings
+		uint balance0 = IERC20(_token0).balanceOf(address(this));
+		uint balance1 = IERC20(_token1).balanceOf(address(this));
+		uint liquidity = balanceOf(address(this));
+
+		uint _totalSupply = totalSupply(); // gas savings, must be defined here since totalSupply can update in _mintFee
+		amount0 = (liquidity * balance0) / _totalSupply; // using balances ensures pro-rata distribution
+		amount1 = (liquidity * balance1) / _totalSupply; // using balances ensures pro-rata distribution
+		require(
+			amount0 > 0 && amount1 > 0,
+			"UniswapV2: INSUFFICIENT_LIQUIDITY_BURNED"
+		);
+		_burn(address(this), liquidity);
+		_safeTransfer(_token0, to, amount0);
+		_safeTransfer(_token1, to, amount1);
+		balance0 = IERC20(_token0).balanceOf(address(this));
+		balance1 = IERC20(_token1).balanceOf(address(this));
+
+		_update(balance0, balance1, _reserve0, _reserve1);
+		emit Burn(msg.sender, amount0, amount1, to);
+	}
 
 	function swap(
 		uint amount0Out,
@@ -201,8 +238,8 @@ contract PairV2 is IPair, PairERC20, OwnableUpgradeable {
 		);
 		{
 			// scope for reserve{0,1}Adjusted, avoids stack too deep errors
-			uint balance0Adjusted = (balance0 * 1000) - (amount0In * (3));
-			uint balance1Adjusted = (balance1 * 1000) - (amount1In * (3));
+			uint balance0Adjusted = (balance0 * 1000) - (amount0In * 3);
+			uint balance1Adjusted = (balance1 * 1000) - (amount1In * 3);
 			require(
 				(balance0Adjusted * balance1Adjusted) >=
 					uint(_reserve0) * (_reserve1) * (1000 ** 2),
