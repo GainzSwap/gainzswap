@@ -4,6 +4,8 @@ import { expect } from "chai";
 import { Addressable, AddressLike, parseEther, ZeroAddress } from "ethers";
 import { ethers } from "hardhat";
 import { hours } from "@nomicfoundation/hardhat-network-helpers/dist/src/helpers/time/duration";
+import { GovernanceV2, GTokenV2, RouterV2, TestERC20 } from "../typechain-types";
+import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
 
 describe("Governance", function () {
   it("deploys governance", async () => {
@@ -317,6 +319,120 @@ describe("Governance", function () {
 
     //   // Assert: Returned nonce matches
     //   expect(returnedNonce).to.equal(nonce);
+    // });
+  });
+
+  describe("unStake", function () {
+    async function unStakeFixture() {
+      const amountToStake = parseEther("100");
+      // Deploy the Governance contract and required tokens
+      const {
+        governance,
+        owner,
+        gToken,
+        users: [user],
+        ...fixture
+      } = await routerFixture();
+
+      const [{ token: tokenA }, paymentB] = await fixture.createPair();
+
+      const stakeToken = await ethers.getContractAt("TestERC20", paymentB.token as Addressable);
+
+      // Mint and stake tokens for user
+      await stakeToken.mintApprove(user, governance, amountToStake);
+      await governance
+        .connect(user)
+        .stake(
+          { ...paymentB, amount: amountToStake },
+          1080,
+          [[paymentB.token], [paymentB.token, tokenA], [paymentB.token, tokenA]],
+          0,
+          0,
+        );
+
+      // Get the initial nonce used for staking
+      const userNonces = await gToken.getNonces(user);
+      const nonExistentNonce = userNonces.at(-1)! + 1n; // For testing invalid nonce
+
+      return {
+        token: await ethers.getContractAt("TestERC20", paymentB.token as Addressable),
+        userNonces,
+        nonExistentNonce,
+        governance,
+        gToken,
+        user,
+        amountToStake,
+        owner,
+        ...fixture,
+      };
+    }
+
+    it("should successfully unstake and transfer rewards when available", async function () {
+      const { gainzToken, governance, owner, amountToStake, user, gToken, token } = await loadFixture(unStakeFixture);
+      // Simulate reward accumulation
+      await gainzToken.mintApprove(owner, governance, amountToStake);
+      await governance.updateRewardReserve(amountToStake);
+
+      const userInitialBalance = await gainzToken.balanceOf(user.address);
+      const governanceInitialReserve = await governance.rewardsReserve();
+      const userInitialTokenBalance = await token.balanceOf(user);
+
+      // Unstake with minimum amounts set to 0
+      await governance.connect(user).unStake((await gToken.getNonces(user))[0], 1, 1);
+      const userFinalBalance = await gainzToken.balanceOf(user.address);
+      const governanceFinalReserve = await governance.rewardsReserve();
+      const userFinalTokenBalance = await token.balanceOf(user);
+
+      // Check that rewards were transferred to the user
+      expect(userFinalTokenBalance).to.be.gt(userInitialTokenBalance);
+      expect(userFinalBalance).to.be.gt(userInitialBalance);
+      expect(governanceFinalReserve).to.be.lt(governanceInitialReserve);
+    });
+
+    it("should revert if trying to unstake with a non-existent nonce", async function () {
+      const { nonExistentNonce, governance, user } = await loadFixture(unStakeFixture);
+      await expect(governance.connect(user).unStake(nonExistentNonce, 0, 0)).to.be.revertedWith(
+        "No GToken balance found at nonce for user",
+      );
+    });
+
+    // it("should correctly adjust user attributes after unstaking", async function () {
+    //   const initialAttributes = await governance.getUserAttributes(user.address, 0);
+
+    //   // Unstake without minimum amounts
+    //   await governance.connect(user).unStake(0, 0, 0);
+
+    //   const finalAttributes = await governance.getUserAttributes(user.address, 0);
+
+    //   // Check that the liquidity in user attributes is now zero
+    //   expect(finalAttributes.lpDetails.liquidity).to.equal(0);
+    // });
+
+    // it("should burn the GToken upon unstaking", async function () {
+    //   // Unstake to trigger GToken burn
+    //   await governance.connect(user).unStake(0, 0, 0);
+
+    //   // Check that GToken balance for the user is zero
+    //   const gTokenBalance = await governance.getGTokenBalance(user.address, 0);
+    //   expect(gTokenBalance).to.equal(0);
+    // });
+
+    // it("should correctly handle cases where claimable reward is zero", async function () {
+    //   // Attempt to unstake when there are no rewards to claim
+    //   const userInitialBalance = await gainzToken.balanceOf(user.address);
+
+    //   await governance.connect(user).unStake(0, 0, 0);
+
+    //   const userFinalBalance = await gainzToken.balanceOf(user.address);
+    //   expect(userFinalBalance).to.equal(userInitialBalance);
+    // });
+
+    // it("should revert if minimum amount conditions are not met", async function () {
+    //   // Set high minimum amounts that should not be met
+    //   const amount0Min = ethers.utils.parseEther("200");
+    //   const amount1Min = ethers.utils.parseEther("200");
+
+    //   await expect(governance.connect(user).unStake(0, amount0Min, amount1Min)).to.be.revertedWith("SlippageExceeded");
     // });
   });
 });

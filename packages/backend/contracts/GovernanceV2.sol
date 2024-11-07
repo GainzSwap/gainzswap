@@ -15,6 +15,7 @@ import { Epochs } from "./libraries/Epochs.sol";
 
 import { GTokenV2, GTokenV2Lib } from "./tokens/GToken/GTokenV2.sol";
 
+import { PairV2 } from "./PairV2.sol";
 import { RouterV2 } from "./RouterV2.sol";
 import { PriceOracle } from "./PriceOracle.sol";
 
@@ -46,7 +47,9 @@ library DeployGTokenV2 {
 /// @dev This contract interacts with the GTokens library and manages LP token payments.
 contract GovernanceV2 is ERC1155HolderUpgradeable, OwnableUpgradeable {
 	using Epochs for Epochs.Storage;
+	using GTokenV2Lib for GTokenV2Lib.Attributes;
 	using TokenPayments for TokenPayment;
+	using TokenPayments for address;
 
 	/// @custom:storage-location erc7201:gainz.GovernanceV2.storage
 	struct GovernanceStorage {
@@ -330,6 +333,83 @@ contract GovernanceV2 is ERC1155HolderUpgradeable, OwnableUpgradeable {
 
 		IERC20($.gainzToken).transfer(user, claimableReward);
 		return GTokenV2($.gtoken).update(user, nonce, attributes);
+	}
+
+	function unStake(uint256 nonce, uint amount0Min, uint amount1Min) external {
+		GovernanceStorage storage $ = _getGovernanceStorage();
+
+		address user = msg.sender;
+
+		// Calculate rewards to be claimed on unstaking
+		(
+			uint256 claimableReward,
+			GTokenV2Lib.Attributes memory attributes
+		) = _calculateClaimableReward(user, nonce);
+
+		// Transfer the claimable rewards to the user, if any
+		if (claimableReward > 0) {
+			$.rewardsReserve -= claimableReward;
+			IERC20($.gainzToken).transfer(user, claimableReward);
+		}
+
+		// Calculate the amount of LP tokens to return to the user
+		uint256 liquidity = attributes.lpDetails.liquidity;
+		uint256 liquidityToReturn = attributes.valueToKeep(
+			liquidity,
+			attributes.epochsElapsed($.epochs.currentEpoch())
+		);
+
+		if (liquidityToReturn < liquidity) {
+			address[] memory addresses = new address[](2);
+			uint256[] memory liquidityPortions = new uint256[](2);
+
+			addresses[0] = user;
+			addresses[1] = address(this); // Governance holds the GToken and ecosystem can utilise them later
+
+			liquidityPortions[0] = liquidityToReturn;
+			liquidityPortions[1] = liquidity - liquidityToReturn;
+
+			// Update the nonce
+			nonce = GTokenV2($.gtoken).split(
+				nonce,
+				addresses,
+				liquidityPortions
+			)[0];
+			attributes = GTokenV2($.gtoken)
+				.getBalanceAt(user, nonce)
+				.attributes;
+
+			// Adjust slippage accordingly
+			amount0Min = (amount0Min * liquidityToReturn) / liquidity;
+			amount1Min = (amount1Min * liquidityToReturn) / liquidity;
+		}
+
+		// Transfer LP tokens back to the user
+
+		PairV2(
+			PriceOracle(OracleLibrary.oracleAddress($.router)).pairFor(
+				attributes.lpDetails.token0,
+				attributes.lpDetails.token1
+			)
+		).approve($.router, attributes.lpDetails.liquidity);
+
+		(uint256 amount0, uint256 amount1) = RouterV2($.router).removeLiquidity(
+			attributes.lpDetails.token0,
+			attributes.lpDetails.token1,
+			attributes.lpDetails.liquidity,
+			amount0Min,
+			amount1Min,
+			address(this),
+			block.timestamp + 1
+		);
+
+		attributes.lpDetails.token0.sendFungibleToken(amount0, user);
+		attributes.lpDetails.token1.sendFungibleToken(amount1, user);
+
+		// Update the user's attributes to reflect the unstake
+		// Burn the GToken, setting liquity to 0 and then updating the token burns it
+		attributes.lpDetails.liquidity = 0;
+		nonce = GTokenV2($.gtoken).update(user, nonce, attributes);
 	}
 
 	// ******* VIEWS *******

@@ -36,7 +36,7 @@ contract PriceOracle {
 	}
 
 	function add(address tokenA, address tokenB) external {
-		address pair = AMMLibrary.pairFor(router, pairsBeacon, tokenA, tokenB);
+		address pair = pairFor(tokenA, tokenB);
 		IPairV2 _pair = IPairV2(pair);
 
 		token0[pair] = _pair.token0();
@@ -49,17 +49,12 @@ contract PriceOracle {
 		require(reserve0 != 0 && reserve1 != 0, "PriceOracle: NO_RESERVES"); // ensure that there's liquidity in the pair
 	}
 
-	// function getUpdatedAveragePrices(
-	// 	address tokenA,
-	// 	address tokenB
-	// ) external returns (uint256 _price0Average, uint256 _price1Average) {
-	// 	address pair = AMMLibrary.pairFor(router, pairsBeacon, tokenA, tokenB);
-
-	// 	update(pair);
-
-	// 	_price0Average = price0Average[pair].mul(1).decode144();
-	// 	_price1Average = price1Average[pair].mul(1).decode144();
-	// }
+	function pairFor(
+		address tokenA,
+		address tokenB
+	) public view returns (address) {
+		return AMMLibrary.pairFor(router, pairsBeacon, tokenA, tokenB);
+	}
 
 	function update(address pair) public {
 		(

@@ -22,6 +22,9 @@ library GTokenV2Lib {
 	// Constants for lock periods and percentage loss calculations
 	uint256 public constant MIN_EPOCHS_LOCK = 30;
 	uint256 public constant MAX_EPOCHS_LOCK = 1080;
+	uint256 public constant MIN_EPOCHS_LOCK_PERCENT_LOSS = 55e4; // 55% in basis points
+	uint256 public constant MAX_EPOCHS_LOCK_PERCENT_LOSS = 15e4; // 15% in basis points
+	uint256 public constant MAX_PERCENT_LOSS = 100e4; // 100% in basis points
 
 	/// @notice Computes the stake weight based on the amount of LP tokens and the epochs locked.
 	/// @param self The Attributes struct of the participant.
@@ -39,6 +42,54 @@ library GTokenV2Lib {
 		self.stakeWeight = self.lpDetails.liqValue * epochsLocked;
 
 		return self;
+	}
+
+	/// @notice Splits an `Attributes` struct into multiple portions based on the specified liquidity portions.
+	/// @param self The original `Attributes` struct to split.
+	/// @param liquidityPortions An array of percentages (as portions of 1e18) to divide the liquidity into.
+	/// @return splitAttributes An array of new `Attributes` structs with the allocated portions.
+	function split(
+		Attributes memory self,
+		uint256[] memory liquidityPortions
+	) internal pure returns (Attributes[] memory splitAttributes) {
+		// Initialize the array to store split `Attributes` structs
+		splitAttributes = new Attributes[](liquidityPortions.length);
+
+		uint256 portionSum;
+		uint256 liqValueSum;
+
+		// Loop through each portion and split attributes
+		for (uint256 i = 0; i < liquidityPortions.length; i++) {
+			uint256 splitLiquidity = liquidityPortions[i];
+			uint256 liqValue = (splitLiquidity * self.lpDetails.liqValue) /
+				self.lpDetails.liquidity;
+
+			splitAttributes[i] = computeStakeWeight(
+				Attributes({
+					rewardPerShare: self.rewardPerShare,
+					epochStaked: self.epochStaked,
+					epochsLocked: self.epochsLocked,
+					lastClaimEpoch: self.lastClaimEpoch,
+					stakeWeight: 0,
+					lpDetails: LiquidityInfo({
+						token0: self.lpDetails.token0,
+						token1: self.lpDetails.token1,
+						liquidity: splitLiquidity,
+						liqValue: liqValue
+					})
+				})
+			);
+
+			portionSum += splitAttributes[i].lpDetails.liquidity;
+			liqValueSum += splitAttributes[i].lpDetails.liqValue;
+		}
+
+		// last portion gets un used liqValue, if any
+		splitAttributes[splitAttributes.length - 1].lpDetails.liqValue +=
+			self.lpDetails.liqValue -
+			liqValueSum;
+
+		return splitAttributes;
 	}
 
 	function supply(Attributes memory self) internal pure returns (uint256) {
@@ -90,6 +141,45 @@ library GTokenV2Lib {
 		return self.lpDetails.liqValue * voteWeight;
 	}
 
+	/// @notice Calculates the number of epochs since the last reward claim.
+	/// @param self The Attributes struct of the participant.
+	/// @return The number of epochs since the last claim.
+	function epochsUnclaimed(
+		Attributes memory self
+	) internal pure returns (uint256) {
+		return self.epochsLocked - self.lastClaimEpoch;
+	}
+
+	/// @notice Calculates the amount of value to keep based on epochs elapsed and locked.
+	/// @param self The Attributes struct of the participant.
+	/// @param value The total value amount.
+	/// @param currentEpoch The current epoch.
+	/// @return The amount of value to keep after applying penalties.
+	function valueToKeep(
+		Attributes memory self,
+		uint256 value,
+		uint256 currentEpoch
+	) internal pure returns (uint256) {
+		// Calculate percentage loss based on epochs locked
+		uint256 epochsLockedPercentLoss = Math.linearInterpolation(
+			MIN_EPOCHS_LOCK,
+			MAX_EPOCHS_LOCK,
+			self.epochsLocked,
+			MIN_EPOCHS_LOCK_PERCENT_LOSS,
+			MAX_EPOCHS_LOCK_PERCENT_LOSS
+		);
+
+		// Calculate the percentage of the value to keep after penalties
+		uint256 percentLost = epochsElapsedPercentLoss(
+			epochsElapsed(self, currentEpoch),
+			epochsLockedPercentLoss,
+			self.epochsLocked
+		);
+
+		uint256 percentToKeep = MAX_PERCENT_LOSS - percentLost;
+		return (value * percentToKeep) / MAX_PERCENT_LOSS;
+	}
+
 	function hasNativeToken(
 		Attributes memory self,
 		address wNativeToken
@@ -97,5 +187,27 @@ library GTokenV2Lib {
 		itHas =
 			self.lpDetails.token0 == wNativeToken ||
 			self.lpDetails.token1 == wNativeToken;
+	}
+
+	/// @notice Calculates the percentage loss of the reward based on elapsed epochs.
+	/// @param elapsed The number of epochs elapsed since staking.
+	/// @param lockedPercentLoss The percentage loss based on epochs locked.
+	/// @param locked The total epochs locked.
+	/// @return The percentage loss based on epochs elapsed.
+	function epochsElapsedPercentLoss(
+		uint256 elapsed,
+		uint256 lockedPercentLoss,
+		uint256 locked
+	) private pure returns (uint256) {
+		uint256 remainingTime = elapsed > locked ? 0 : locked - elapsed;
+
+		return
+			Math.linearInterpolation(
+				0,
+				locked,
+				remainingTime,
+				0,
+				lockedPercentLoss
+			);
 	}
 }

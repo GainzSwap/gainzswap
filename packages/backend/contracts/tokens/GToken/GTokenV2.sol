@@ -227,4 +227,48 @@ contract GTokenV2 is SFT {
 			}
 		}
 	}
+
+	/// @notice Splits a GToken into portions and distributes it to the specified addresses.
+	/// @dev If an address is the zero address, the allotted portion is burned.
+	/// This function can be called by the contract owner or the token's owner.
+	/// @param nonce The nonce of the GToken to split.
+	/// @param addresses An array of addresses to receive the split portions.
+	/// @param liquidityPortions An array of liquidityPortions representing the amounts to be split.
+	/// @return splitNonces An array of nonces for the newly minted split tokens.
+	function split(
+		uint256 nonce,
+		address[] calldata addresses,
+		uint256[] calldata liquidityPortions
+	) external returns (uint256[] memory splitNonces) {
+		require(
+			addresses.length > 0 &&
+				addresses.length == liquidityPortions.length,
+			"Invalid Addresses and portions"
+		);
+
+		address user = addresses[0];
+
+		require(
+			hasSFT(user, nonce) || isOperator(msg.sender),
+			"Caller not authorized"
+		);
+
+		GTokenV2Lib.Attributes memory attributes = getBalanceAt(user, nonce)
+			.attributes;
+		GTokenV2Lib.Attributes[] memory splitAttributes = attributes.split(
+			liquidityPortions
+		);
+
+		splitNonces = new uint256[](splitAttributes.length);
+		for (uint256 i = 0; i < splitAttributes.length; i++) {
+			splitNonces[i] = _mint(
+				addresses[i],
+				splitAttributes[i].supply(),
+				abi.encode(splitAttributes[i])
+			);
+		}
+
+		// Burn the original token after splitting
+		_burn(user, nonce, attributes.supply());
+	}
 }

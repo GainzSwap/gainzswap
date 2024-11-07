@@ -359,6 +359,38 @@ contract RouterV2 is IRouterV2, SwapFactory, OldRouter {
 		(liquidity, pair) = _mintLiquidity(paymentA, paymentB);
 	}
 
+	function removeLiquidity(
+		address tokenA,
+		address tokenB,
+		uint liquidity,
+		uint amountAMin,
+		uint amountBMin,
+		address to,
+		uint deadline
+	)
+		public
+		ensure(deadline)
+		canCreatePair
+		returns (uint amountA, uint amountB)
+	{
+		address pair = getPair(tokenA, tokenB);
+		require(pair != address(0), "RouterV2: INVALID_PAIR");
+
+		// Transfer liquidity tokens from the sender to the pair
+		PairV2(pair).transferFrom(msg.sender, pair, liquidity);
+
+		// Burn liquidity tokens to receive tokenA and tokenB
+		(uint amount0, uint amount1) = IPairV2(pair).burn(to);
+		(address token0, ) = AMMLibrary.sortTokens(tokenA, tokenB);
+		(amountA, amountB) = tokenA == token0
+			? (amount0, amount1)
+			: (amount1, amount0);
+
+		// Ensure minimum amounts are met
+		require(amountA >= amountAMin, "RouterV2: INSUFFICIENT_A_AMOUNT");
+		require(amountB >= amountBMin, "RouterV2: INSUFFICIENT_B_AMOUNT");
+	}
+
 	// ******* VIEWS *******
 
 	function getWrappedNativeToken() public view returns (address) {
