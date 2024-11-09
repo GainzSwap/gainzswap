@@ -15,7 +15,7 @@ struct GTokenV2Balance {
 }
 
 /// @title GToken Contract
-/// @notice This contract handles the minting of governance tokens (GToken) used in the ADEX platform.
+/// @notice This contract handles the minting of governance tokens (GToken) used in the Gainz platform.
 /// @dev The contract extends a semi-fungible token (SFT) and uses GToken attributes for staking.
 contract GTokenV2 is SFT {
 	using GTokenV2Lib for GTokenV2Lib.Attributes;

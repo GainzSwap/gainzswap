@@ -267,21 +267,17 @@ contract GovernanceV2 is ERC1155HolderUpgradeable, OwnableUpgradeable {
 	}
 
 	/// @notice Updates the rewards reserve by adding the specified amount.
-	/// @dev Only callable by the contract owner or authorized party.
-	/// @param amount The amount to add to the rewards reserve.
-	function updateRewardReserve(uint256 amount) external {
+	function updateRewardReserve() external {
 		GovernanceStorage storage $ = _getGovernanceStorage();
 
-		require(amount > 0, "Amount must be greater than zero");
-
 		// Transfer the amount of Gainz tokens to the contract
-		IERC20($.gainzToken).transferFrom(msg.sender, address(this), amount);
-
-		// Update the rewards reserve
-		$.rewardsReserve += amount;
+		uint256 amount = IERC20($.gainzToken).balanceOf(address(this)) -
+			$.rewardsReserve;
 
 		uint256 totalStakeWeight = GTokenV2($.gtoken).totalStakeWeight();
 		if (totalStakeWeight > 0) {
+			// Update the rewards reserve
+			$.rewardsReserve += amount;
 			$.rewardPerShare += FullMath.mulDiv(
 				amount,
 				FixedPoint128.Q128,

@@ -5,7 +5,7 @@ import { ZeroAddress } from "ethers";
 import * as path from "path";
 
 task("upgradeFromAcademyDEX", "Upgrades router").setAction(async (_, hre) => {
-  const { ethers } = hre;
+  const { ethers, upgrades } = hre;
 
   const srcArtifacts = path.join(process.env.OLD_CODE_BACKEND_PATH!, "artifacts/contracts");
   const destArtifacts = "artifacts/contracts";
@@ -40,8 +40,12 @@ task("upgradeFromAcademyDEX", "Upgrades router").setAction(async (_, hre) => {
     redeployImplementation: "always",
   });
 
+  const Gainz = await ethers.getContractFactory("Gainz");
+  const gainzToken = await upgrades.deployProxy(Gainz);
+  await gainzToken.waitForDeployment();
+
   const routerV2 = await ethers.getContractAt("RouterV2", routerAddress);
-  await routerV2.runInit();
+  await routerV2.runInit(gainzToken);
 
   const { abi, metadata } = await hre.deployments.getExtendedArtifact("RouterV2");
   await hre.deployments.save("RouterV2", { abi, metadata, address: routerAddress });
@@ -53,6 +57,7 @@ task("upgradeFromAcademyDEX", "Upgrades router").setAction(async (_, hre) => {
   const gTokenAddr = await governance.getGToken();
 
   const artifactsToSave = [
+    ["Gainz", await gainzToken.getAddress()],
     ["RouterV2", routerAddress],
     ["PairV2", ZeroAddress],
     ["GovernanceV2", governanceAdr],

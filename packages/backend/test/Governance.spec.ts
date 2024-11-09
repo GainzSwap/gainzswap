@@ -148,7 +148,7 @@ describe("Governance", function () {
   describe("claimRewards", function () {
     it("Should allow a user to claim rewards if available", async function () {
       const {
-        users: [user, governanceDonor],
+        users: [user],
         governance,
         gainzToken,
         gToken,
@@ -170,8 +170,8 @@ describe("Governance", function () {
         .stake({ token: tokenB, nonce: 0, amount: stakeAmount }, epochsLocked, [[tokenB], [tokenB, tokenA], []], 0, 0);
 
       // Add rewards to the reserve
-      await gainzToken.mintApprove(governanceDonor, governance, rewardAmount);
-      await governance.connect(governanceDonor).updateRewardReserve(rewardAmount);
+      await gainzToken.mint(governance, rewardAmount);
+      await governance.updateRewardReserve();
 
       // Act: Claim rewards
       const userBalanceBefore = await gainzToken.balanceOf(user);
@@ -368,10 +368,10 @@ describe("Governance", function () {
     }
 
     it("should successfully unstake and transfer rewards when available", async function () {
-      const { gainzToken, governance, owner, amountToStake, user, gToken, token } = await loadFixture(unStakeFixture);
+      const { gainzToken, governance, amountToStake, user, gToken, token } = await loadFixture(unStakeFixture);
       // Simulate reward accumulation
-      await gainzToken.mintApprove(owner, governance, amountToStake);
-      await governance.updateRewardReserve(amountToStake);
+      await gainzToken.mint(governance, amountToStake);
+      await governance.updateRewardReserve();
 
       const userInitialBalance = await gainzToken.balanceOf(user.address);
       const governanceInitialReserve = await governance.rewardsReserve();
