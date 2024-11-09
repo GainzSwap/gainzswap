@@ -58,9 +58,9 @@ export async function routerFixture() {
   };
 
   async function createPair(
-    args: { paymentA?: TokenPaymentStruct; paymentB?: TokenPaymentStruct; pairsCreated?: number } = {  },
+    args: { paymentA?: TokenPaymentStruct; paymentB?: TokenPaymentStruct; pairsCreated?: number } = {},
   ) {
-    const pairsCreated = args.pairsCreated??1;
+    const pairsCreated = args.pairsCreated ?? 1;
 
     if (!args.paymentA && !args.paymentB) {
       args.paymentA = { token: wrappedNativeToken, nonce: 0, amount: parseEther("1000") };
